@@ -17,6 +17,7 @@ class ControlActivo {
     this.controladorNombre,
     this.iniciadoEn,
     this.estado,
+    this.modoControl,
   });
 
   factory ControlActivo.fromJson(Map<String, dynamic> j) => ControlActivo(
@@ -25,6 +26,7 @@ class ControlActivo {
     controladorNombre: j['controlador_nombre'] as String?,
     iniciadoEn: parseDateOrNull(j['iniciado_en']),
     estado: j['estado'] as String?,
+    modoControl: j['modo_control'] as String?,
   );
 
   final int idPickingControl;
@@ -32,6 +34,34 @@ class ControlActivo {
   final String? controladorNombre;
   final DateTime? iniciadoEn;
   final String? estado;
+
+  /// 'LISTA' | 'CAJON' | 'PRODUCTO' -- modo con el que se inició la sesión
+  /// (viene de la asignación si había una, si no default 'LISTA').
+  final String? modoControl;
+}
+
+/// Asignación de controlador previa a iniciar la sesión (ver
+/// `picking_control_service.py::_get_asignacion_activa`). Puede existir sin
+/// que haya `ControlActivo` todavía -- alguien fue designado pero no arrancó.
+class AsignacionControl {
+  AsignacionControl({
+    required this.idUsuarioAsignado,
+    this.nombreAsignado,
+    required this.modoControl,
+    this.observacion,
+  });
+
+  factory AsignacionControl.fromJson(Map<String, dynamic> j) => AsignacionControl(
+    idUsuarioAsignado: j['id_usuario_asignado'] as int,
+    nombreAsignado: j['nombre_asignado'] as String?,
+    modoControl: j['modo_control'] as String? ?? 'LISTA',
+    observacion: j['observacion'] as String?,
+  );
+
+  final int idUsuarioAsignado;
+  final String? nombreAsignado;
+  final String modoControl;
+  final String? observacion;
 }
 
 /// Fila de `GET /picking-control/subpedidos`.
@@ -49,6 +79,7 @@ class SubpedidoControl {
     this.tipoSubpedido,
     required this.totalItems,
     this.controlActivo,
+    this.asignacion,
   });
 
   factory SubpedidoControl.fromJson(Map<String, dynamic> j) => SubpedidoControl(
@@ -66,6 +97,9 @@ class SubpedidoControl {
     controlActivo: j['control_activo'] == null
         ? null
         : ControlActivo.fromJson(j['control_activo'] as Map<String, dynamic>),
+    asignacion: j['asignacion'] == null
+        ? null
+        : AsignacionControl.fromJson(j['asignacion'] as Map<String, dynamic>),
   );
 
   final int idPedidoSubpedido;
@@ -80,6 +114,7 @@ class SubpedidoControl {
   final String? tipoSubpedido;
   final int totalItems;
   final ControlActivo? controlActivo;
+  final AsignacionControl? asignacion;
 
   /// "Cliente - Sucursal - Tipo de subpedido", mismo formato que
   /// `SubpedidoPicking.tituloDisplay` en Picking Operario.
@@ -210,6 +245,53 @@ class ItemControl {
   final String? observacionControl;
 
   bool get controlado => resultadoControl != null;
+
+  /// Devuelve una copia con el resultado de una revisión aplicado -- usado
+  /// por las 3 pantallas de control (cajón/lista/producto) para reflejar
+  /// al instante el resultado de `revisar_item` sin volver a pedir el
+  /// detalle completo.
+  ItemControl copyWith({
+    double? cantidadControlada,
+    String? resultadoControl,
+    String? motivosRechazo,
+    String? observacionControl,
+  }) {
+    return ItemControl(
+      idPickingItem: idPickingItem,
+      idStockReservaDetalle: idStockReservaDetalle,
+      idPedidoSubpedidoItem: idPedidoSubpedidoItem,
+      idProducto: idProducto,
+      productoNombre: productoNombre,
+      productoCodigo: productoCodigo,
+      productoSku: productoSku,
+      idUnidadMedida: idUnidadMedida,
+      unidadNombre: unidadNombre,
+      unidadSimbolo: unidadSimbolo,
+      cantidadReservada: cantidadReservada,
+      cantidadPickeada: cantidadPickeada,
+      idContenedor: idContenedor,
+      contenedorIdentificador: contenedorIdentificador,
+      contenedorCodigoBarras: contenedorCodigoBarras,
+      idLote: idLote,
+      loteInterno: loteInterno,
+      loteProveedor: loteProveedor,
+      fechaVencimiento: fechaVencimiento,
+      idZona: idZona,
+      zonaNombre: zonaNombre,
+      zonaCodigo: zonaCodigo,
+      zonaOrden: zonaOrden,
+      idUbicacion: idUbicacion,
+      ubicacionCodigo: ubicacionCodigo,
+      ubicacionNombre: ubicacionNombre,
+      pickerNombre: pickerNombre,
+      pickeadoEn: pickeadoEn,
+      idPickingControlItem: idPickingControlItem,
+      cantidadControlada: cantidadControlada ?? this.cantidadControlada,
+      resultadoControl: resultadoControl ?? this.resultadoControl,
+      motivosRechazo: motivosRechazo ?? this.motivosRechazo,
+      observacionControl: observacionControl ?? this.observacionControl,
+    );
+  }
 }
 
 /// Header de subpedido para `DetalleControl.subpedido` (ver
@@ -304,11 +386,29 @@ class GrupoCajonControl {
   int get rechazados => items.where((i) => i.resultadoControl == 'RECHAZADO').length;
 }
 
+/// Ítems de control agrupados por producto (mismo criterio que
+/// `ProductoAggRow` en el WorkScreen web) -- útil cuando un producto quedó
+/// repartido en más de un cajón/zona y el controlador quiere revisarlo
+/// todo junto en vez de ir cajón por cajón.
+class GrupoProductoControl {
+  GrupoProductoControl({required this.idProducto, required this.etiqueta, required this.items});
+
+  final int idProducto;
+  final String etiqueta;
+  final List<ItemControl> items;
+
+  int get total => items.length;
+  int get pendientes => items.where((i) => !i.controlado).length;
+  int get aprobados => items.where((i) => i.resultadoControl == 'APROBADO').length;
+  int get rechazados => items.where((i) => i.resultadoControl == 'RECHAZADO').length;
+}
+
 /// `GET /picking-control/subpedido/{id}`.
 class DetalleControl {
   DetalleControl({
     required this.subpedido,
     this.controlActivo,
+    this.asignacion,
     required this.resumen,
     required this.items,
   });
@@ -318,12 +418,16 @@ class DetalleControl {
     controlActivo: j['control_activo'] == null
         ? null
         : ControlActivo.fromJson(j['control_activo'] as Map<String, dynamic>),
+    asignacion: j['asignacion'] == null
+        ? null
+        : AsignacionControl.fromJson(j['asignacion'] as Map<String, dynamic>),
     resumen: ResumenControl.fromJson(j['resumen'] as Map<String, dynamic>),
     items: (j['items'] as List? ?? []).cast<Map<String, dynamic>>().map(ItemControl.fromJson).toList(),
   );
 
   final SubpedidoControlHeader subpedido;
   final ControlActivo? controlActivo;
+  final AsignacionControl? asignacion;
   final ResumenControl resumen;
   final List<ItemControl> items;
 
@@ -355,6 +459,30 @@ class DetalleControl {
       if (b.idContenedor == null) return -1;
       return a.etiqueta.compareTo(b.etiqueta);
     });
+    return grupos;
+  }
+
+  /// Productos ordenados alfabéticamente, cada uno con todas sus líneas
+  /// (puede tener más de una si el mismo producto quedó repartido en
+  /// distintos cajones/zonas).
+  List<GrupoProductoControl> get gruposPorProducto {
+    final orden = <int>[];
+    final mapa = <int, List<ItemControl>>{};
+    for (final item in items) {
+      final key = item.idProducto;
+      final grupo = mapa.putIfAbsent(key, () {
+        orden.add(key);
+        return <ItemControl>[];
+      });
+      grupo.add(item);
+    }
+
+    final grupos = orden.map((key) {
+      final itemsGrupo = mapa[key]!;
+      return GrupoProductoControl(idProducto: key, etiqueta: itemsGrupo.first.productoNombre, items: itemsGrupo);
+    }).toList();
+
+    grupos.sort((a, b) => a.etiqueta.compareTo(b.etiqueta));
     return grupos;
   }
 }

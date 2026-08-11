@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../app/theme.dart';
 import '../../../core/errors/app_exception.dart';
@@ -75,6 +76,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     ),
                   ),
                 ),
+              ),
+              TextButton.icon(
+                onPressed: () => context.push('/configurar-servidor'),
+                icon: const Icon(Icons.dns_outlined, size: 18, color: AppColors.muted),
+                label: const Text('Configurar servidor', style: TextStyle(color: AppColors.muted)),
               ),
             ],
           ),

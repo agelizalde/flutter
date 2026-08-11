@@ -44,6 +44,7 @@ String? _resolverRuta(Notificacion n) {
     case 'PEDIDO_SUBPEDIDO':
       if (id == null) return null;
       if (n.tipo.startsWith('EXPEDICION')) return '/expedicion/subpedido/$id';
+      if (n.tipo.startsWith('CONTROL')) return '/picking-control/subpedido/$id';
       if (n.tipo.startsWith('PICKING')) return '/picking-operario/subpedido/$id/zona';
       return null;
     case 'AJUSTE_STOCK_SOLICITUD':

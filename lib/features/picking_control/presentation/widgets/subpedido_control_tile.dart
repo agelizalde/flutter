@@ -7,14 +7,19 @@ import '../../domain/picking_control_models.dart';
 /// `PickingControlHomeScreen` — mismo lenguaje visual que
 /// `SubpedidoPickingTile` de Picking Operario.
 class SubpedidoControlTile extends StatelessWidget {
-  const SubpedidoControlTile({super.key, required this.subpedido, required this.onTap});
+  const SubpedidoControlTile({super.key, required this.subpedido, required this.onTap, this.miIdUsuario});
 
   final SubpedidoControl subpedido;
   final VoidCallback onTap;
 
+  /// Usuario logueado, para distinguir "asignado a vos" de "asignado a otro"
+  /// en el badge -- `null` si todavía no cargó.
+  final int? miIdUsuario;
+
   @override
   Widget build(BuildContext context) {
     final activo = subpedido.controlActivo;
+    final asignacion = subpedido.asignacion;
 
     return Material(
       color: AppColors.surface,
@@ -72,6 +77,32 @@ class SubpedidoControlTile extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.waTx),
+                      ),
+                    ),
+                  ],
+                ),
+              ] else if (asignacion != null) ...[
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Icon(
+                      Icons.person_pin_circle_outlined,
+                      size: 14,
+                      color: asignacion.idUsuarioAsignado == miIdUsuario ? AppColors.okTx : AppColors.muted,
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        asignacion.idUsuarioAsignado == miIdUsuario
+                            ? 'Asignado a vos · ${asignacion.modoControl.toLowerCase()}'
+                            : 'Asignado a ${asignacion.nombreAsignado ?? 'otro usuario'}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: asignacion.idUsuarioAsignado == miIdUsuario ? AppColors.okTx : AppColors.muted,
+                        ),
                       ),
                     ),
                   ],

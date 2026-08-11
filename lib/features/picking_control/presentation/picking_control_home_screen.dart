@@ -62,15 +62,36 @@ class PickingControlHomeScreen extends ConsumerWidget {
             ],
           ),
           data: (subpedidos) {
+            // Solo lo que me corresponde a mí explícitamente -- no lo libre
+            // (sin asignar) ni lo asignado/controlado por otra persona. Ver
+            // ControlPanelDashboard (web) para el panorama completo, que
+            // sigue mostrando todo para quien supervisa/asigna.
+            //
+            // "Me corresponde" cubre dos casos, porque son dos entidades
+            // distintas en el backend (ver picking_control_service.py):
+            //  - asignacion: me asignaron pero todavía no arrancó nadie.
+            //  - controlActivo: la sesión ya está en curso y YO soy el
+            //    controlador (sea porque la autoinicié libre, porque me
+            //    asignaron y la inicié, o porque un supervisor me la
+            //    transfirió con "Editar" mientras ya estaba en curso --
+            //    ese caso no deja rastro en `asignacion`, solo en la
+            //    sesión misma).
+            final miId = usuario?.idUsuario;
+            final misSubpedidos = subpedidos.where((sp) {
+              if (miId == null) return false;
+              return sp.asignacion?.idUsuarioAsignado == miId ||
+                  sp.controlActivo?.idUsuarioControlador == miId;
+            }).toList();
+
             return ListView(
               padding: const EdgeInsets.all(20),
               children: [
                 const Text(
-                  'SUBPEDIDOS PARA CONTROLAR',
+                  'MIS CONTROLES ASIGNADOS',
                   style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.muted, letterSpacing: 1),
                 ),
                 const SizedBox(height: 10),
-                if (subpedidos.isEmpty)
+                if (misSubpedidos.isEmpty)
                   const Padding(
                     padding: EdgeInsets.only(top: 60),
                     child: Center(
@@ -79,7 +100,7 @@ class PickingControlHomeScreen extends ConsumerWidget {
                           Icon(Icons.fact_check_outlined, size: 56, color: AppColors.faint),
                           SizedBox(height: 14),
                           Text(
-                            'No hay subpedidos listos para controlar por ahora',
+                            'No tenés ningún control asignado por ahora',
                             textAlign: TextAlign.center,
                             style: TextStyle(color: AppColors.muted, fontWeight: FontWeight.w600, fontSize: 14),
                           ),
@@ -88,10 +109,11 @@ class PickingControlHomeScreen extends ConsumerWidget {
                     ),
                   )
                 else
-                  ...subpedidos.map((sp) => Padding(
+                  ...misSubpedidos.map((sp) => Padding(
                         padding: const EdgeInsets.only(bottom: 10),
                         child: SubpedidoControlTile(
                           subpedido: sp,
+                          miIdUsuario: usuario?.idUsuario,
                           onTap: () => context.push('/picking-control/subpedido/${sp.idPedidoSubpedido}'),
                         ),
                       )),

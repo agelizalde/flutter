@@ -22,6 +22,7 @@ import '../features/ajuste_stock_solicitudes/presentation/solicitar_control_scre
 import '../features/auth/application/auth_controller.dart';
 import '../features/auth/presentation/blocked_user_screen.dart';
 import '../features/auth/presentation/cambiar_password_screen.dart';
+import '../features/auth/presentation/configurar_servidor_screen.dart';
 import '../features/auth/presentation/login_screen.dart';
 import '../features/home/presentation/home_screen.dart';
 import '../features/entrega/presentation/entrega_home_screen.dart';
@@ -85,8 +86,11 @@ final routerProvider = Provider<GoRouter>((ref) {
       final estaBloqueado = usuario?.bloqueadoErp ?? false;
       final vaALogin = state.matchedLocation == '/login';
       final vaABloqueado = state.matchedLocation == '/blocked';
+      // Sin sesión: tiene que poder llegar acá también, para arreglar la IP
+      // del servidor si es justo eso lo que le está impidiendo loguearse.
+      final vaAConfigurarServidor = state.matchedLocation == '/configurar-servidor';
 
-      if (!estaLogueado && !vaALogin) return '/login';
+      if (!estaLogueado && !vaALogin && !vaAConfigurarServidor) return '/login';
       if (estaLogueado && estaBloqueado && !vaABloqueado) return '/blocked';
       if (estaLogueado && !estaBloqueado && vaABloqueado) return '/';
       if (estaLogueado && vaALogin) return estaBloqueado ? '/blocked' : '/';
@@ -101,6 +105,11 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/blocked',
         builder: (context, state) =>
             const DebugScreenTag(label: 'Bloqueado', child: BlockedUserScreen()),
+      ),
+      GoRoute(
+        path: '/configurar-servidor',
+        builder: (context, state) =>
+            const DebugScreenTag(label: 'Configurar servidor', child: ConfigurarServidorScreen()),
       ),
       // Shell global de navegación (bottom nav) — Inicio/Pedidos/
       // Notificaciones/Perfil tienen estado propio (un `StatefulShellBranch`
