@@ -12,6 +12,13 @@ import '../domain/stock_models.dart';
 /// intermedio de la búsqueda "por ubicación" (CONTEXTO_WHEREHOUSE.md:
 /// `/stock/por-ubicacion` agrupa por ubicación, no da el detalle por
 /// producto, así que acá se usa `/stock/existencias?id_ubicacion=`).
+///
+/// El backend devuelve una fila por lote — acá se unifican por producto
+/// (mismo producto puede tener varios lotes en la misma ubicación) sumando
+/// la cantidad y quedándose con el vencimiento más próximo, porque para
+/// este listado el lote no importa (a diferencia de traslados/ajuste de
+/// stock, que sí necesitan elegir un lote puntual y siguen usando
+/// `ExistenciaStock` sin unificar).
 class UbicacionProductosScreen extends ConsumerWidget {
   const UbicacionProductosScreen({
     super.key,
@@ -45,15 +52,16 @@ class UbicacionProductosScreen extends ConsumerWidget {
               ),
             );
           }
+          final unificados = _unificarPorProducto(items);
           return ListView.separated(
             padding: const EdgeInsets.all(20),
-            itemCount: items.length,
+            itemCount: unificados.length,
             separatorBuilder: (_, _) => const SizedBox(height: 10),
             itemBuilder: (context, i) {
-              final e = items[i];
-              return _ExistenciaTile(
-                existencia: e,
-                onTap: () => context.push('/stock/producto/${e.idProducto}'),
+              final p = unificados[i];
+              return _ProductoUnificadoTile(
+                producto: p,
+                onTap: () => context.push('/stock/producto/${p.idProducto}'),
               );
             },
           );
@@ -63,10 +71,55 @@ class UbicacionProductosScreen extends ConsumerWidget {
   }
 }
 
-class _ExistenciaTile extends StatelessWidget {
-  const _ExistenciaTile({required this.existencia, required this.onTap});
+/// Total unificado de un producto en la ubicación — colapsa todos los
+/// lotes de `items` en una fila por `idProducto`.
+class _ProductoUnificado {
+  const _ProductoUnificado({
+    required this.idProducto,
+    required this.productoNombre,
+    required this.unidadSimbolo,
+    required this.unidadPesable,
+    required this.cantidadTotal,
+    this.fechaVencimientoProxima,
+  });
 
-  final ExistenciaStock existencia;
+  final int idProducto;
+  final String productoNombre;
+  final String unidadSimbolo;
+  final bool unidadPesable;
+  final double cantidadTotal;
+  final DateTime? fechaVencimientoProxima;
+}
+
+List<_ProductoUnificado> _unificarPorProducto(List<ExistenciaStock> items) {
+  final porProducto = <int, _ProductoUnificado>{};
+  for (final e in items) {
+    final actual = porProducto[e.idProducto];
+    porProducto[e.idProducto] = _ProductoUnificado(
+      idProducto: e.idProducto,
+      productoNombre: e.productoNombre,
+      unidadSimbolo: e.unidadSimbolo,
+      unidadPesable: e.unidadPesable,
+      cantidadTotal: (actual?.cantidadTotal ?? 0) + e.cantidad,
+      fechaVencimientoProxima: _masProxima(actual?.fechaVencimientoProxima, e.fechaVencimiento),
+    );
+  }
+  return porProducto.values.toList()
+    ..sort((a, b) => a.productoNombre.compareTo(b.productoNombre));
+}
+
+/// La más próxima entre dos fechas de vencimiento, ignorando nulls (un lote
+/// sin control de vencimiento no debe "tapar" el vencimiento real de otro).
+DateTime? _masProxima(DateTime? a, DateTime? b) {
+  if (a == null) return b;
+  if (b == null) return a;
+  return a.isBefore(b) ? a : b;
+}
+
+class _ProductoUnificadoTile extends StatelessWidget {
+  const _ProductoUnificadoTile({required this.producto, required this.onTap});
+
+  final _ProductoUnificado producto;
   final VoidCallback onTap;
 
   @override
@@ -98,7 +151,7 @@ class _ExistenciaTile extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        existencia.productoNombre,
+                        producto.productoNombre,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
@@ -107,17 +160,18 @@ class _ExistenciaTile extends StatelessWidget {
                           color: AppColors.text,
                         ),
                       ),
-                      const SizedBox(height: 2),
-                      Text(
-                        'Lote ${existencia.loteInterno}'
-                        '${existencia.fechaVencimiento != null ? ' · Vence ${formatFecha(existencia.fechaVencimiento!)}' : ''}',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: AppColors.muted,
+                      if (producto.fechaVencimientoProxima != null) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          'Vence ${formatFecha(producto.fechaVencimientoProxima!)}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: AppColors.muted,
+                          ),
                         ),
-                      ),
+                      ],
                     ],
                   ),
                 ),
@@ -126,7 +180,7 @@ class _ExistenciaTile extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Text(
-                      '${existencia.cantidad.toStringAsFixed(0)} ${existencia.unidadSimbolo}',
+                      '${formatCantidad(producto.cantidadTotal, pesable: producto.unidadPesable)} ${producto.unidadSimbolo}',
                       style: const TextStyle(
                         fontWeight: FontWeight.w800,
                         fontSize: 14,

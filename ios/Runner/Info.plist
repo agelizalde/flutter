@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Wherehouse</string>
+	<string>RS - WH</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -15,7 +15,7 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>wherehouse</string>
+	<string>RS - WH</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -27,9 +27,9 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>
-	<string>Wherehouse usa la cámara para escanear códigos de barra de productos y tomar fotos de remisiones.</string>
+	<string>RS - WH usa la cámara para escanear códigos de barra de productos y tomar fotos de remisiones.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Wherehouse necesita acceso a tus fotos para adjuntar la foto de la remisión al confirmar una entrega.</string>
+	<string>RS - WH necesita acceso a tus fotos para adjuntar la foto de la remisión al confirmar una entrega.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

@@ -24,12 +24,16 @@ import '../features/auth/presentation/blocked_user_screen.dart';
 import '../features/auth/presentation/cambiar_password_screen.dart';
 import '../features/auth/presentation/configurar_servidor_screen.dart';
 import '../features/auth/presentation/login_screen.dart';
+import '../features/creador/presentation/creador_home_screen.dart';
 import '../features/home/presentation/home_screen.dart';
 import '../features/entrega/presentation/entrega_home_screen.dart';
 import '../features/entrega/presentation/entrega_subpedido_screen.dart';
 import '../features/expedicion/presentation/expedicion_detalle_screen.dart';
 import '../features/expedicion/presentation/expedicion_home_screen.dart';
+import '../features/firmas/presentation/firma_solicitud_detalle_screen.dart';
+import '../features/firmas/presentation/firmas_pendientes_screen.dart';
 import '../features/oc_simple/presentation/oc_simple_screen.dart';
+import '../features/pos/presentation/pos_screen.dart';
 import '../features/picking_control/presentation/picking_control_detalle_screen.dart';
 import '../features/picking_control/presentation/picking_control_home_screen.dart';
 import '../features/picking_operario/presentation/picking_home_screen.dart';
@@ -293,6 +297,16 @@ final routerProvider = Provider<GoRouter>((ref) {
             const DebugScreenTag(label: 'OC simple', child: OcSimpleScreen()),
       ),
       GoRoute(
+        path: '/creador',
+        builder: (context, state) =>
+            const DebugScreenTag(label: 'Creador', child: CreadorHomeScreen()),
+      ),
+      GoRoute(
+        path: '/pos',
+        builder: (context, state) =>
+            const DebugScreenTag(label: 'Punto de venta', child: PosScreen()),
+      ),
+      GoRoute(
         path: '/ajuste-stock',
         builder: (context, state) =>
             const DebugScreenTag(label: 'Ajuste de stock · Inicio', child: AjusteStockHomeScreen()),
@@ -466,6 +480,18 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/cambiar-password',
         builder: (context, state) =>
             const DebugScreenTag(label: 'Actualizar contraseña', child: CambiarPasswordScreen()),
+      ),
+      GoRoute(
+        path: '/firmas',
+        builder: (context, state) =>
+            const DebugScreenTag(label: 'Firmas · Pendientes', child: FirmasPendientesScreen()),
+      ),
+      GoRoute(
+        path: '/firmas/:id',
+        builder: (context, state) => DebugScreenTag(
+          label: 'Firmas · Detalle',
+          child: FirmaSolicitudDetalleScreen(idFirmaSolicitud: int.parse(state.pathParameters['id']!)),
+        ),
       ),
     ],
   );

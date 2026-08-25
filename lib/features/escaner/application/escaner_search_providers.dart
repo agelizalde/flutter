@@ -40,28 +40,33 @@ final escanerUbicacionesResultsProvider =
 /// La OC solo se resuelve por código exacto (no hay búsqueda parcial de OC
 /// fuera del flujo de recepción aprobada) — `null` mientras no haya un
 /// match exacto, sin distinguir "no encontrada" de "todavía no escribió
-/// el código completo".
+/// el código completo". El 403 (falta `recepciones.ver`) se trata igual que
+/// el 404: esta rama es independiente de lo que el usuario esté buscando
+/// en realidad (producto/ubicación), así que no debe tapar esos resultados
+/// con un error de permiso ajeno — ver mismo criterio en `EscanerRepository`.
 final escanerOcResultProvider = FutureProvider.autoDispose<OrdenCompraDetalle?>((ref) async {
   final q = ref.watch(escanerQueryProvider).trim();
   if (q.isEmpty) return null;
   try {
     return await ref.watch(recepcionRepositoryProvider).obtenerOcInfoPorCodigo(q);
   } catch (e) {
-    if (e is DioException && e.response?.statusCode == 404) return null;
+    if (e is DioException && (e.response?.statusCode == 404 || e.response?.statusCode == 403)) return null;
     rethrow;
   }
 });
 
 /// El contenedor, igual que la OC, solo se resuelve por código exacto
 /// (identificador o código de barras, ej. "COS-00003") — `null` mientras no
-/// haya un match exacto.
+/// haya un match exacto. Mismo criterio de 403 que arriba: sin
+/// `picking_operario.ver` esta rama no debe bloquear la búsqueda de
+/// producto/ubicación con el error de permiso.
 final escanerContenedorResultProvider = FutureProvider.autoDispose<ContenedorDetalle?>((ref) async {
   final q = ref.watch(escanerQueryProvider).trim();
   if (q.isEmpty) return null;
   try {
     return await ref.watch(pickingRepositoryProvider).buscarContenedorDetalle(q);
   } catch (e) {
-    if (e is DioException && e.response?.statusCode == 404) return null;
+    if (e is DioException && (e.response?.statusCode == 404 || e.response?.statusCode == 403)) return null;
     rethrow;
   }
 });

@@ -101,6 +101,14 @@ class PerfilScreen extends ConsumerWidget {
             sliver: SliverToBoxAdapter(
               child: Column(
                 children: [
+                  if (usuario?.tienePermiso('firmas.ver') ?? false) ...[
+                    _MenuTile(
+                      icono: Icons.draw_outlined,
+                      titulo: 'Firmas pendientes',
+                      onTap: () => context.push('/firmas'),
+                    ),
+                    const SizedBox(height: 10),
+                  ],
                   _MenuTile(
                     icono: Icons.lock_outline,
                     titulo: 'Actualizar contraseña',

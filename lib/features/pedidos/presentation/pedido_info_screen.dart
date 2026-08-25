@@ -48,7 +48,9 @@ class _Contenido extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final subpedidosAsync = ref.watch(pedidoSubpedidosProvider(detalle.idPedido));
+    final subpedidosAsync = ref.watch(
+      pedidoSubpedidosProvider(detalle.idPedido),
+    );
 
     return ListView(
       padding: const EdgeInsets.all(20),
@@ -74,14 +76,20 @@ class _Contenido extends ConsumerWidget {
           ),
           error: (e, _) => Padding(
             padding: const EdgeInsets.symmetric(vertical: 16),
-            child: Text(describeError(e), style: const TextStyle(color: AppColors.erTx)),
+            child: Text(
+              describeError(e),
+              style: const TextStyle(color: AppColors.erTx),
+            ),
           ),
           data: (subpedidos) => subpedidos.isEmpty
               ? const _Card(
                   child: Center(
                     child: Padding(
                       padding: EdgeInsets.symmetric(vertical: 16),
-                      child: Text('Este pedido no tiene subpedidos', style: TextStyle(color: AppColors.muted)),
+                      child: Text(
+                        'Este pedido no tiene subpedidos',
+                        style: TextStyle(color: AppColors.muted),
+                      ),
                     ),
                   ),
                 )
@@ -90,7 +98,10 @@ class _Contenido extends ConsumerWidget {
                       .map(
                         (sp) => Padding(
                           padding: const EdgeInsets.only(bottom: 10),
-                          child: _SubpedidoRow(subpedido: sp, codigoPedido: detalle.codigoPedido),
+                          child: _SubpedidoRow(
+                            subpedido: sp,
+                            codigoPedido: detalle.codigoPedido,
+                          ),
                         ),
                       )
                       .toList(),
@@ -117,23 +128,43 @@ class _CabeceraCard extends StatelessWidget {
               Expanded(
                 child: Text(
                   detalle.clienteNombre,
-                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.text),
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.text,
+                  ),
                 ),
               ),
               _EstadoBadge(estado: detalle.estado),
             ],
           ),
           const SizedBox(height: 10),
-          _FilaDato(icono: Icons.confirmation_number_outlined, texto: detalle.codigoPedido),
+          _FilaDato(
+            icono: Icons.confirmation_number_outlined,
+            texto: detalle.codigoPedido,
+          ),
           if (detalle.clienteSucursalNombre != null)
-            _FilaDato(icono: Icons.store_outlined, texto: detalle.clienteSucursalNombre!),
+            _FilaDato(
+              icono: Icons.store_outlined,
+              texto: detalle.clienteSucursalNombre!,
+            ),
           if (detalle.eta != null)
-            _FilaDato(icono: Icons.event_outlined, texto: 'ETA: ${formatFecha(detalle.eta!)}'),
+            _FilaDato(
+              icono: Icons.event_outlined,
+              texto: 'ETA: ${formatFechaHora(detalle.eta!)}',
+            ),
           if (detalle.vehiculoNombre != null)
-            _FilaDato(icono: Icons.local_shipping_outlined, texto: detalle.vehiculoNombre!),
-          if (detalle.observaciones != null && detalle.observaciones!.isNotEmpty) ...[
+            _FilaDato(
+              icono: Icons.local_shipping_outlined,
+              texto: detalle.vehiculoNombre!,
+            ),
+          if (detalle.observaciones != null &&
+              detalle.observaciones!.isNotEmpty) ...[
             const SizedBox(height: 10),
-            Text(detalle.observaciones!, style: const TextStyle(fontSize: 13, color: AppColors.sub)),
+            Text(
+              detalle.observaciones!,
+              style: const TextStyle(fontSize: 13, color: AppColors.sub),
+            ),
           ],
         ],
       ),
@@ -164,7 +195,11 @@ class _SubpedidoRow extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(18),
             boxShadow: [
-              BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 14, offset: const Offset(0, 5)),
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.04),
+                blurRadius: 14,
+                offset: const Offset(0, 5),
+              ),
             ],
           ),
           child: Row(
@@ -174,7 +209,11 @@ class _SubpedidoRow extends StatelessWidget {
                   '${subpedido.tipoNombre} ($codigoPedido)',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: AppColors.text),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                    color: AppColors.text,
+                  ),
                 ),
               ),
               const SizedBox(width: 8),
@@ -203,7 +242,12 @@ class _FilaDato extends StatelessWidget {
         children: [
           Icon(icono, size: 16, color: AppColors.muted),
           const SizedBox(width: 8),
-          Expanded(child: Text(texto, style: const TextStyle(fontSize: 13, color: AppColors.sub))),
+          Expanded(
+            child: Text(
+              texto,
+              style: const TextStyle(fontSize: 13, color: AppColors.sub),
+            ),
+          ),
         ],
       ),
     );
@@ -219,8 +263,18 @@ class _EstadoBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(color: AppColors.soft, borderRadius: BorderRadius.circular(999)),
-      child: Text(estado, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.sub)),
+      decoration: BoxDecoration(
+        color: AppColors.soft,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        estado,
+        style: const TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          color: AppColors.sub,
+        ),
+      ),
     );
   }
 }
@@ -239,7 +293,11 @@ class _Card extends StatelessWidget {
         color: Colors.white,
         borderRadius: BorderRadius.circular(18),
         boxShadow: [
-          BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 14, offset: const Offset(0, 5)),
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 14,
+            offset: const Offset(0, 5),
+          ),
         ],
       ),
       child: child,

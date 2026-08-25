@@ -10,6 +10,7 @@ import '../../auth/application/auth_controller.dart';
 import '../../escaner/application/escaner_providers.dart';
 import '../../escaner/presentation/resolver_navegacion.dart';
 import '../../notificaciones/application/notificaciones_providers.dart';
+import '../../pos/application/pos_providers.dart';
 import '../../recepcion/application/recepcion_providers.dart';
 import '../application/home_providers.dart';
 import 'widgets/tarea_pendiente_card.dart';
@@ -23,35 +24,51 @@ class _ModuloDeposito {
   final String ruta;
   final Color color;
 
-  /// Código `modulo.accion` que habilita este módulo — ver tab "App" del
-  /// rol en el ERP web (`RolDetallePage.jsx`). Cada uno ya existe en el
-  /// catálogo de permisos del backend, no son códigos nuevos.
+  /// Código `app.<módulo>.ver` — permiso EXCLUSIVO para mostrar esta
+  /// tarjeta, separado del permiso de acción que gatea la pantalla/endpoint
+  /// en sí (ej. `stock.ver` sigue gateando `/deposito/stock`, pero ya no
+  /// decide si la tarjeta aparece). Se configura por rol en el tab "App"
+  /// de `RolDetallePage.jsx` (web) — ver
+  /// `back-app/endpoints/modules/ajustes/usuarios/migracion_permisos_app_accesos.sql`.
   final String permiso;
 }
 
 /// "Accesos rápidos" — todos los módulos del depósito en una sola grilla,
-/// cada uno con una descripción corta (rediseño 2026-07 del Home). "Stock"
-/// no tenía tarjeta propia antes (solo se llegaba por buscador/escaneo);
-/// ahora tiene entrada directa. Cada módulo se oculta si el usuario (por
-/// sus roles) no tiene el permiso correspondiente — antes solo "OC simple"
-/// se ocultaba así, el resto era visible para cualquier logueado.
+/// cada uno con una descripción corta (rediseño 2026-07 del Home). Cada
+/// módulo se oculta si el usuario (por sus roles) no tiene el permiso
+/// `app.*.ver` correspondiente — decidido aparte del permiso que gatea el
+/// endpoint real, así un rol puede configurarse a medida qué ve en la app
+/// sin tocar lo que puede hacer en el back/web.
 const _modulosBase = [
-  _ModuloDeposito('Stock', 'Ver stock y ubicaciones', Icons.inventory_2_outlined, '/stock', Color(0xFF2563EB), 'stock.ver'),
-  _ModuloDeposito('Recepción', 'Recibir mercadería', Icons.move_to_inbox_outlined, '/recepcion', Color(0xFF16A34A), 'recepciones.ver'),
-  _ModuloDeposito('Traslados', 'Mover entre ubicaciones', Icons.swap_horiz_outlined, '/traslados', Color(0xFF7C3AED), 'traslados.ver'),
-  _ModuloDeposito('Ajuste de stock', 'Ajustar o solicitar ajuste', Icons.rule_outlined, '/ajuste-stock', Color(0xFF475569), 'ajuste_stock.ver'),
-  _ModuloDeposito('Picking', 'Preparar pedidos', Icons.shopping_basket_outlined, '/picking-operario', Color(0xFF0EA5E9), 'picking_operario.ver'),
-  _ModuloDeposito('Producción', 'Órdenes y partes', Icons.precision_manufacturing_outlined, '/produccion', Color(0xFFEA580C), 'produccion.ver'),
-  _ModuloDeposito('Cargar camión', 'Cargar cajones al camión', Icons.local_shipping_outlined, '/expedicion', Color(0xFFDC2626), 'pedidos_subpedidos.expedir'),
-  _ModuloDeposito('Entregar pedido', 'Confirmar entrega al cliente', Icons.assignment_turned_in_outlined, '/entrega', Color(0xFF16A34A), 'pedidos_subpedidos.entregar'),
-  _ModuloDeposito('Pedidos', 'Ver y gestionar', Icons.receipt_long_outlined, '/pedidos', Color(0xFF4F46E5), 'pedidos.ver'),
-  _ModuloDeposito('Asignar pickers', 'Asignar tareas de picking', Icons.assignment_ind_outlined, '/picking-asignacion', Color(0xFFD97706), 'picking_asignacion.ver'),
-  _ModuloDeposito('Control de calidad', 'Controlar pedidos armados', Icons.fact_check_outlined, '/picking-control', Color(0xFF0D9488), 'control_picking.ver'),
-  _ModuloDeposito('OC simples', 'Órdenes de compra', Icons.shopping_cart_outlined, '/oc-simple', Color(0xFFDB2777), 'oc.crear_simple'),
+  _ModuloDeposito('Stock', 'Ver stock y ubicaciones', Icons.inventory_2_outlined, '/stock', Color(0xFF2563EB), 'app.stock.ver'),
+  _ModuloDeposito('Recepción', 'Recibir mercadería', Icons.move_to_inbox_outlined, '/recepcion', Color(0xFF16A34A), 'app.recepcion.ver'),
+  _ModuloDeposito('Traslados', 'Mover entre ubicaciones', Icons.swap_horiz_outlined, '/traslados', Color(0xFF7C3AED), 'app.traslados.ver'),
+  _ModuloDeposito('Ajuste de stock', 'Ajustar o solicitar ajuste', Icons.rule_outlined, '/ajuste-stock', Color(0xFF475569), 'app.ajuste_stock.ver'),
+  _ModuloDeposito('Picking', 'Preparar pedidos', Icons.shopping_basket_outlined, '/picking-operario', Color(0xFF0EA5E9), 'app.picking.ver'),
+  _ModuloDeposito('Producción', 'Órdenes y partes', Icons.precision_manufacturing_outlined, '/produccion', Color(0xFFEA580C), 'app.produccion.ver'),
+  _ModuloDeposito('Cargar camión', 'Cargar cajones al camión', Icons.local_shipping_outlined, '/expedicion', Color(0xFFDC2626), 'app.expedicion.ver'),
+  _ModuloDeposito('Entregar pedido', 'Confirmar entrega al cliente', Icons.assignment_turned_in_outlined, '/entrega', Color(0xFF16A34A), 'app.entrega.ver'),
+  _ModuloDeposito('Pedidos', 'Ver y gestionar', Icons.receipt_long_outlined, '/pedidos', Color(0xFF4F46E5), 'app.pedidos.ver'),
+  _ModuloDeposito('Asignar pickers', 'Asignar tareas de picking', Icons.assignment_ind_outlined, '/picking-asignacion', Color(0xFFD97706), 'app.picking_asignacion.ver'),
+  _ModuloDeposito('Control de calidad', 'Controlar pedidos armados', Icons.fact_check_outlined, '/picking-control', Color(0xFF0D9488), 'app.picking_control.ver'),
+  _ModuloDeposito('OC simples', 'Órdenes de compra', Icons.shopping_cart_outlined, '/oc-simple', Color(0xFFDB2777), 'app.oc_simple.ver'),
+  // El módulo Creador en sí agrupa 5 permisos distintos (proveedores/
+  // marcas/productos/zonas/ubicaciones) y cada pestaña adentro ya se oculta
+  // sola según el permiso puntual del usuario (ver `CreadorHomeScreen`);
+  // `app.creador.ver` solo decide si la tarjeta del Home aparece.
+  _ModuloDeposito('Creador', 'Alta rápida de catálogos', Icons.add_box_outlined, '/creador', Color(0xFF0891B2), 'app.creador.ver'),
+  // Gateado además por `tienePuntoVentaAsignadoProvider` en `_modulosPara`
+  // (no alcanza con `app.pos.ver`: hace falta también que el usuario tenga
+  // un punto de venta ACTIVO asignado — ver Ajustes → Puntos de venta en
+  // la web).
+  _ModuloDeposito('Punto de venta', 'Vender de mostrador', Icons.point_of_sale_outlined, '/pos', Color(0xFF059669), 'app.pos.ver'),
 ];
 
-List<_ModuloDeposito> _modulosPara(UsuarioActual? usuario) {
-  return _modulosBase.where((m) => usuario?.tienePermiso(m.permiso) ?? false).toList();
+List<_ModuloDeposito> _modulosPara(UsuarioActual? usuario, {required bool tienePuntoVenta}) {
+  return _modulosBase
+      .where((m) => usuario?.tienePermiso(m.permiso) ?? false)
+      .where((m) => m.ruta != '/pos' || tienePuntoVenta)
+      .toList();
 }
 
 String _saludo() {
@@ -68,7 +85,8 @@ class HomeScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final usuario = ref.watch(authControllerProvider).value;
     final primerNombre = usuario?.nombreMostrar.split(' ').first;
-    final modulos = _modulosPara(usuario);
+    final tienePuntoVenta = ref.watch(tienePuntoVentaAsignadoProvider).value ?? false;
+    final modulos = _modulosPara(usuario, tienePuntoVenta: tienePuntoVenta);
     final pendientes = ref.watch(pendientesHomeProvider);
     final hayNotificacionesSinLeer =
         ref.watch(misNotificacionesProvider).value?.any((n) => !n.leida) ?? false;

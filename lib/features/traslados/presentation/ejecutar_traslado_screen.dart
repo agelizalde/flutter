@@ -39,6 +39,9 @@ class _OrigenSeleccionado {
     required this.cantidadDisponible,
     required this.ubicacionNombre,
     required this.ubicacionCodigo,
+    this.idUbicacionPreferida,
+    this.ubicacionPreferidaNombre,
+    this.ubicacionPreferidaCodigo,
   });
 
   factory _OrigenSeleccionado.deAlerta(AlertaReacomodo a) => _OrigenSeleccionado(
@@ -49,6 +52,9 @@ class _OrigenSeleccionado {
     cantidadDisponible: a.cantidadDisponible,
     ubicacionNombre: a.ubicacionNombre,
     ubicacionCodigo: a.ubicacionCodigo,
+    idUbicacionPreferida: a.idUbicacionPreferida,
+    ubicacionPreferidaNombre: a.ubicacionPreferidaNombre,
+    ubicacionPreferidaCodigo: a.ubicacionPreferidaCodigo,
   );
 
   factory _OrigenSeleccionado.deExistencia(ExistenciaStock e) => _OrigenSeleccionado(
@@ -59,6 +65,9 @@ class _OrigenSeleccionado {
     cantidadDisponible: e.cantidadDisponible,
     ubicacionNombre: e.ubicacionNombre,
     ubicacionCodigo: e.ubicacionCodigo,
+    idUbicacionPreferida: e.idUbicacionPreferida,
+    ubicacionPreferidaNombre: e.ubicacionPreferidaNombre,
+    ubicacionPreferidaCodigo: e.ubicacionPreferidaCodigo,
   );
 
   final int idExistencia;
@@ -68,6 +77,12 @@ class _OrigenSeleccionado {
   final double cantidadDisponible;
   final String ubicacionNombre;
   final String ubicacionCodigo;
+
+  /// Ubicación recomendada del producto (`productos_almacenaje.id_ubicacion_preferida`),
+  /// null si no tiene una configurada.
+  final int? idUbicacionPreferida;
+  final String? ubicacionPreferidaNombre;
+  final String? ubicacionPreferidaCodigo;
 }
 
 /// Flujo único para "Trasladar" desde una alerta de reacomodo (origen ya
@@ -170,9 +185,25 @@ class _EjecutarTrasladoScreenState extends ConsumerState<EjecutarTrasladoScreen>
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => const _BuscarUbicacionSheet(),
+      builder: (context) => _BuscarUbicacionSheet(idUbicacionRecomendada: _origen?.idUbicacionPreferida),
     );
     if (seleccionado != null) setState(() => _destino = seleccionado);
+  }
+
+  /// Atajo de un toque: usa directo la ubicación recomendada del producto
+  /// como destino, sin pasar por el buscador. Se arma con lo que ya trajo
+  /// el origen (alerta de reacomodo o existencia) — no hace falta otra
+  /// llamada al backend.
+  void _usarUbicacionRecomendada() {
+    final o = _origen;
+    if (o?.idUbicacionPreferida == null) return;
+    setState(() {
+      _destino = UbicacionSimple(
+        idUbicacion: o!.idUbicacionPreferida!,
+        nombre: o.ubicacionPreferidaNombre ?? '',
+        codigo: o.ubicacionPreferidaCodigo ?? '',
+      );
+    });
   }
 
   Future<void> _ejecutar() async {
@@ -241,6 +272,7 @@ class _EjecutarTrasladoScreenState extends ConsumerState<EjecutarTrasladoScreen>
               puedeCambiarOrigen: widget.prefillAlerta == null,
               onCambiarOrigen: _volverABuscarProducto,
               onElegirDestino: _elegirDestino,
+              onUsarRecomendada: _usarUbicacionRecomendada,
               onEjecutar: _ejecutar,
             )
           : _producto != null
@@ -417,19 +449,32 @@ class _ListaExistencias extends ConsumerWidget {
                   child: Text('No hay stock disponible para trasladar', style: TextStyle(color: AppColors.muted)),
                 );
               }
+              // La(s) que están en la ubicación recomendada del producto van
+              // primero — no hay que ir a buscarlas en medio de la lista.
+              final ordenadas = [
+                ...disponibles.where((e) => e.esUbicacionRecomendada),
+                ...disponibles.where((e) => !e.esUbicacionRecomendada),
+              ];
               return ListView.separated(
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-                itemCount: disponibles.length,
+                itemCount: ordenadas.length,
                 separatorBuilder: (_, _) => const SizedBox(height: 8),
                 itemBuilder: (context, i) {
-                  final e = disponibles[i];
+                  final e = ordenadas[i];
+                  final recomendada = e.esUbicacionRecomendada;
                   return Material(
                     color: AppColors.surface,
                     borderRadius: BorderRadius.circular(14),
                     child: InkWell(
                       borderRadius: BorderRadius.circular(14),
                       onTap: () => onSeleccionar(e),
-                      child: Padding(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(14),
+                          border: recomendada
+                              ? Border.all(color: AppColors.okTx.withValues(alpha: 0.35), width: 1.4)
+                              : null,
+                        ),
                         padding: const EdgeInsets.all(12),
                         child: Row(
                           children: [
@@ -437,10 +482,23 @@ class _ListaExistencias extends ConsumerWidget {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(
-                                    '${e.ubicacionNombre} (${e.ubicacionCodigo})',
-                                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: AppColors.text),
+                                  Row(
+                                    children: [
+                                      Flexible(
+                                        child: Text(
+                                          '${e.ubicacionNombre} (${e.ubicacionCodigo})',
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: AppColors.text),
+                                        ),
+                                      ),
+                                      if (recomendada) ...[
+                                        const SizedBox(width: 6),
+                                        const _BadgeRecomendada(),
+                                      ],
+                                    ],
                                   ),
+                                  const SizedBox(height: 2),
                                   Text(
                                     'Lote ${e.loteInterno}',
                                     style: const TextStyle(fontSize: 12, color: AppColors.muted),
@@ -469,6 +527,85 @@ class _ListaExistencias extends ConsumerWidget {
   }
 }
 
+/// Distintivo para la existencia cuya ubicación coincide con la
+/// "ubicación recomendada" configurada en el producto (ver
+/// `ExistenciaStock.esUbicacionRecomendada`).
+class _BadgeRecomendada extends StatelessWidget {
+  const _BadgeRecomendada();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      decoration: BoxDecoration(color: AppColors.okBg, borderRadius: BorderRadius.circular(999)),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.star_rounded, size: 12, color: AppColors.okTx),
+          const SizedBox(width: 3),
+          Text(
+            'Recomendada',
+            style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: AppColors.okTx),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Aviso arriba del campo de destino cuando el producto tiene una ubicación
+/// recomendada configurada y todavía no es la elegida — con un atajo para
+/// usarla directo, sin tener que buscarla ni escanearla.
+class _BannerUbicacionRecomendada extends StatelessWidget {
+  const _BannerUbicacionRecomendada({
+    required this.nombre,
+    required this.codigo,
+    required this.onUsar,
+  });
+
+  final String nombre;
+  final String codigo;
+  final VoidCallback onUsar;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
+      decoration: BoxDecoration(
+        color: AppColors.okBg,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.okTx.withValues(alpha: 0.25)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.star_rounded, size: 20, color: AppColors.okTx),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Ubicación recomendada',
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.okTx),
+                ),
+                Text(
+                  codigo.isNotEmpty && codigo != nombre ? '$nombre ($codigo)' : nombre,
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: AppColors.text),
+                ),
+              ],
+            ),
+          ),
+          TextButton(
+            onPressed: onUsar,
+            style: TextButton.styleFrom(foregroundColor: AppColors.okTx),
+            child: const Text('Usar', style: TextStyle(fontWeight: FontWeight.w800)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _FormularioTraslado extends StatelessWidget {
   const _FormularioTraslado({
     required this.origen,
@@ -479,6 +616,7 @@ class _FormularioTraslado extends StatelessWidget {
     required this.puedeCambiarOrigen,
     required this.onCambiarOrigen,
     required this.onElegirDestino,
+    required this.onUsarRecomendada,
     required this.onEjecutar,
   });
 
@@ -490,6 +628,7 @@ class _FormularioTraslado extends StatelessWidget {
   final bool puedeCambiarOrigen;
   final VoidCallback onCambiarOrigen;
   final VoidCallback onElegirDestino;
+  final VoidCallback onUsarRecomendada;
   final Future<void> Function() onEjecutar;
 
   @override
@@ -535,6 +674,14 @@ class _FormularioTraslado extends StatelessWidget {
           decoration: InputDecoration(labelText: 'Cantidad a trasladar (${origen.unidadSimbolo})'),
         ),
         const SizedBox(height: 16),
+        if (origen.idUbicacionPreferida != null && destino?.idUbicacion != origen.idUbicacionPreferida) ...[
+          _BannerUbicacionRecomendada(
+            nombre: origen.ubicacionPreferidaNombre ?? '',
+            codigo: origen.ubicacionPreferidaCodigo ?? '',
+            onUsar: onUsarRecomendada,
+          ),
+          const SizedBox(height: 12),
+        ],
         InkWell(
           onTap: onElegirDestino,
           borderRadius: BorderRadius.circular(14),
@@ -557,6 +704,10 @@ class _FormularioTraslado extends StatelessWidget {
                     ),
                   ),
                 ),
+                if (destino != null && destino!.idUbicacion == origen.idUbicacionPreferida) ...[
+                  const _BadgeRecomendada(),
+                  const SizedBox(width: 8),
+                ],
                 const Icon(Icons.search, size: 18, color: AppColors.muted),
               ],
             ),
@@ -585,7 +736,11 @@ class _FormularioTraslado extends StatelessWidget {
 }
 
 class _BuscarUbicacionSheet extends ConsumerStatefulWidget {
-  const _BuscarUbicacionSheet();
+  const _BuscarUbicacionSheet({this.idUbicacionRecomendada});
+
+  /// Si no es null, la ubicación con este id se marca con
+  /// `_BadgeRecomendada` entre los resultados de la búsqueda.
+  final int? idUbicacionRecomendada;
 
   @override
   ConsumerState<_BuscarUbicacionSheet> createState() => _BuscarUbicacionSheetState();
@@ -702,13 +857,20 @@ class _BuscarUbicacionSheetState extends ConsumerState<_BuscarUbicacionSheet> {
                       separatorBuilder: (_, _) => const SizedBox(height: 8),
                       itemBuilder: (context, i) {
                         final u = items[i];
+                        final recomendada = u.idUbicacion == widget.idUbicacionRecomendada;
                         return Material(
                           color: AppColors.surface,
                           borderRadius: BorderRadius.circular(14),
                           child: InkWell(
                             borderRadius: BorderRadius.circular(14),
                             onTap: () => Navigator.of(context).pop(u),
-                            child: Padding(
+                            child: Container(
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(14),
+                                border: recomendada
+                                    ? Border.all(color: AppColors.okTx.withValues(alpha: 0.35), width: 1.4)
+                                    : null,
+                              ),
                               padding: const EdgeInsets.all(12),
                               child: Row(
                                 children: [
@@ -720,11 +882,21 @@ class _BuscarUbicacionSheetState extends ConsumerState<_BuscarUbicacionSheet> {
                                   ),
                                   const SizedBox(width: 12),
                                   Expanded(
-                                    child: Text(
-                                      '${u.nombre} (${u.codigo})',
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: AppColors.text),
+                                    child: Row(
+                                      children: [
+                                        Flexible(
+                                          child: Text(
+                                            '${u.nombre} (${u.codigo})',
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: AppColors.text),
+                                          ),
+                                        ),
+                                        if (recomendada) ...[
+                                          const SizedBox(width: 6),
+                                          const _BadgeRecomendada(),
+                                        ],
+                                      ],
                                     ),
                                   ),
                                   const Icon(Icons.chevron_right, color: AppColors.faint),

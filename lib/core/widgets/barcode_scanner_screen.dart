@@ -15,7 +15,9 @@ class BarcodeScannerScreen extends StatefulWidget {
 }
 
 class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
-  final _controller = MobileScannerController(formats: const [BarcodeFormat.all]);
+  final _controller = MobileScannerController(
+    formats: const [BarcodeFormat.all],
+  );
   bool _yaDetectado = false;
 
   @override
@@ -26,7 +28,9 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
 
   void _onDetect(BarcodeCapture capture) {
     if (_yaDetectado) return;
-    final valor = capture.barcodes.isEmpty ? null : capture.barcodes.first.rawValue?.trim();
+    final valor = capture.barcodes.isEmpty
+        ? null
+        : capture.barcodes.first.rawValue?.trim();
     if (valor == null || valor.isEmpty) return;
     _yaDetectado = true;
     Navigator.of(context).pop(valor);
@@ -46,7 +50,9 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
               valueListenable: _controller,
               builder: (context, state, child) {
                 return Icon(
-                  state.torchState == TorchState.on ? Icons.flash_on : Icons.flash_off,
+                  state.torchState == TorchState.on
+                      ? Icons.flash_on
+                      : Icons.flash_off,
                 );
               },
             ),
@@ -90,7 +96,11 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
             child: Text(
               'Apuntá la cámara al código de barras del producto',
               textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600),
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
         ],

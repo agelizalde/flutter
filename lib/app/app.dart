@@ -12,7 +12,7 @@ class WherehouseApp extends ConsumerWidget {
     final router = ref.watch(routerProvider);
 
     return MaterialApp.router(
-      title: 'Wherehouse',
+      title: 'RS - WH',
       debugShowCheckedModeBanner: false,
       theme: buildAppTheme(),
       routerConfig: router,

@@ -12,14 +12,20 @@ import '../domain/pedido_models.dart';
 /// Solo lectura, sin acciones (esta app no edita pedidos) más allá del menú
 /// de opciones (por ahora solo "Descargar", sin implementar todavía).
 class SubpedidoItemsScreen extends ConsumerStatefulWidget {
-  const SubpedidoItemsScreen({super.key, required this.idPedidoSubpedido, this.tipoNombre, this.estadoSubpedido});
+  const SubpedidoItemsScreen({
+    super.key,
+    required this.idPedidoSubpedido,
+    this.tipoNombre,
+    this.estadoSubpedido,
+  });
 
   final int idPedidoSubpedido;
   final String? tipoNombre;
   final String? estadoSubpedido;
 
   @override
-  ConsumerState<SubpedidoItemsScreen> createState() => _SubpedidoItemsScreenState();
+  ConsumerState<SubpedidoItemsScreen> createState() =>
+      _SubpedidoItemsScreenState();
 }
 
 class _SubpedidoItemsScreenState extends ConsumerState<SubpedidoItemsScreen> {
@@ -43,12 +49,14 @@ class _SubpedidoItemsScreenState extends ConsumerState<SubpedidoItemsScreen> {
           if (widget.estadoSubpedido != null)
             Padding(
               padding: const EdgeInsets.only(right: 8),
-              child: Center(child: _EstadoBadge(estado: widget.estadoSubpedido!)),
+              child: Center(
+                child: _EstadoBadge(estado: widget.estadoSubpedido!),
+              ),
             ),
           PopupMenuButton<String>(
-            onSelected: (_) => ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Próximamente')),
-            ),
+            onSelected: (_) => ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(const SnackBar(content: Text('Próximamente'))),
             itemBuilder: (context) => const [
               PopupMenuItem(value: 'descargar', child: Text('Descargar')),
             ],
@@ -61,7 +69,8 @@ class _SubpedidoItemsScreenState extends ConsumerState<SubpedidoItemsScreen> {
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 10),
             child: TextField(
               controller: _busquedaController,
-              onChanged: (v) => setState(() => _busqueda = v.trim().toLowerCase()),
+              onChanged: (v) =>
+                  setState(() => _busqueda = v.trim().toLowerCase()),
               decoration: const InputDecoration(
                 hintText: 'Buscar producto...',
                 prefixIcon: Icon(Icons.search),
@@ -85,18 +94,26 @@ class _SubpedidoItemsScreenState extends ConsumerState<SubpedidoItemsScreen> {
                 final filtrados = _busqueda.isEmpty
                     ? items
                     : items
-                        .where(
-                          (i) =>
-                              i.productoNombre.toLowerCase().contains(_busqueda) ||
-                              (i.codigoInterno?.toLowerCase().contains(_busqueda) ?? false),
-                        )
-                        .toList();
+                          .where(
+                            (i) =>
+                                i.productoNombre.toLowerCase().contains(
+                                  _busqueda,
+                                ) ||
+                                (i.codigoInterno?.toLowerCase().contains(
+                                      _busqueda,
+                                    ) ??
+                                    false),
+                          )
+                          .toList();
 
                 if (items.isEmpty) {
                   return const Center(
                     child: Padding(
                       padding: EdgeInsets.all(24),
-                      child: Text('Este subpedido no tiene ítems', style: TextStyle(color: AppColors.muted)),
+                      child: Text(
+                        'Este subpedido no tiene ítems',
+                        style: TextStyle(color: AppColors.muted),
+                      ),
                     ),
                   );
                 }
@@ -104,7 +121,10 @@ class _SubpedidoItemsScreenState extends ConsumerState<SubpedidoItemsScreen> {
                   return const Center(
                     child: Padding(
                       padding: EdgeInsets.all(24),
-                      child: Text('Sin resultados', style: TextStyle(color: AppColors.muted)),
+                      child: Text(
+                        'Sin resultados',
+                        style: TextStyle(color: AppColors.muted),
+                      ),
                     ),
                   );
                 }
@@ -142,7 +162,11 @@ class _ItemTile extends StatelessWidget {
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
-          BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 12, offset: const Offset(0, 4)),
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
         ],
       ),
       child: Row(
@@ -154,15 +178,30 @@ class _ItemTile extends StatelessWidget {
               children: [
                 Text(
                   item.productoNombre,
-                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: AppColors.text),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                    color: AppColors.text,
+                  ),
                 ),
-                if (item.codigoInterno != null && item.codigoInterno!.isNotEmpty) ...[
+                if (item.codigoInterno != null &&
+                    item.codigoInterno!.isNotEmpty) ...[
                   const SizedBox(height: 2),
-                  Text(item.codigoInterno!, style: const TextStyle(fontSize: 12, color: AppColors.muted)),
+                  Text(
+                    item.codigoInterno!,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: AppColors.muted,
+                    ),
+                  ),
                 ],
-                if (item.observacion != null && item.observacion!.isNotEmpty) ...[
+                if (item.observacion != null &&
+                    item.observacion!.isNotEmpty) ...[
                   const SizedBox(height: 6),
-                  Text(item.observacion!, style: const TextStyle(fontSize: 12, color: AppColors.sub)),
+                  Text(
+                    item.observacion!,
+                    style: const TextStyle(fontSize: 12, color: AppColors.sub),
+                  ),
                 ],
               ],
             ),
@@ -173,7 +212,11 @@ class _ItemTile extends StatelessWidget {
             children: [
               Text(
                 unidad != null ? '$cantidadTexto $unidad' : cantidadTexto,
-                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: AppColors.text),
+                style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 14,
+                  color: AppColors.text,
+                ),
               ),
               const SizedBox(height: 6),
               _EstadoBadge(estado: item.estado),
@@ -195,8 +238,18 @@ class _EstadoBadge extends StatelessWidget {
     final visual = _EstadoVisual.de(estado);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(color: visual.bg, borderRadius: BorderRadius.circular(999)),
-      child: Text(visual.etiqueta, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: visual.fg)),
+      decoration: BoxDecoration(
+        color: visual.bg,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        visual.etiqueta,
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          color: visual.fg,
+        ),
+      ),
     );
   }
 }
@@ -216,32 +269,60 @@ class _EstadoVisual {
       case 'PENDIENTE':
         return const _EstadoVisual('Pendiente', AppColors.soft, AppColors.sub);
       case 'RESERVA_PARCIAL':
-        return const _EstadoVisual('Res. parcial', AppColors.waBg, AppColors.waTx);
+        return const _EstadoVisual(
+          'Res. parcial',
+          AppColors.waBg,
+          AppColors.waTx,
+        );
       case 'RESERVADO':
         return const _EstadoVisual('Reservado', AppColors.inBg, AppColors.inTx);
       case 'PICKING_PARCIAL':
-        return const _EstadoVisual('Pick. parcial', AppColors.waBg, AppColors.waTx);
+        return const _EstadoVisual(
+          'Pick. parcial',
+          AppColors.waBg,
+          AppColors.waTx,
+        );
       case 'PICKEADO':
         return const _EstadoVisual('Pickeado', AppColors.okBg, AppColors.okTx);
       case 'CONTROL_PARCIAL':
-        return const _EstadoVisual('Ctrl. parcial', AppColors.waBg, AppColors.waTx);
+        return const _EstadoVisual(
+          'Ctrl. parcial',
+          AppColors.waBg,
+          AppColors.waTx,
+        );
       case 'CONTROLADO':
-        return const _EstadoVisual('Controlado', AppColors.inBg, AppColors.inTx);
+        return const _EstadoVisual(
+          'Controlado',
+          AppColors.inBg,
+          AppColors.inTx,
+        );
       case 'EXPEDIDO':
         return const _EstadoVisual('Expedido', AppColors.inBg, AppColors.inTx);
       case 'ENTREGADO':
         return const _EstadoVisual('Entregado', AppColors.okBg, AppColors.okTx);
       // Estados de subpedido (badge del appbar) que no son de ítem.
       case 'CONFIRMADO':
-        return const _EstadoVisual('Confirmado', AppColors.inBg, AppColors.inTx);
+        return const _EstadoVisual(
+          'Confirmado',
+          AppColors.inBg,
+          AppColors.inTx,
+        );
       case 'PICKING':
-        return const _EstadoVisual('En picking', AppColors.waBg, AppColors.waTx);
+        return const _EstadoVisual(
+          'En picking',
+          AppColors.waBg,
+          AppColors.waTx,
+        );
       case 'CONTROL':
         return const _EstadoVisual('Control', AppColors.waBg, AppColors.waTx);
       case 'EN_CARGA':
         return const _EstadoVisual('En carga', AppColors.inBg, AppColors.inTx);
       case 'EN_ENTREGA':
-        return const _EstadoVisual('En entrega', AppColors.inBg, AppColors.inTx);
+        return const _EstadoVisual(
+          'En entrega',
+          AppColors.inBg,
+          AppColors.inTx,
+        );
       case 'ANULADO':
         return const _EstadoVisual('Anulado', AppColors.erBg, AppColors.erTx);
       default:

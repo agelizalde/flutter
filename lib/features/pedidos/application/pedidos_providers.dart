@@ -17,23 +17,30 @@ final pedidosRepositoryProvider = Provider<PedidosRepository>((ref) {
 
 /// Detalle de un pedido por `id`, para `PedidoInfoScreen` — llega desde el
 /// escaneo contextual (ver `escaner/`), mismo patrón que `ocInfoDetalleProvider`.
-final pedidoInfoProvider = FutureProvider.family.autoDispose<PedidoDetalle, int>((ref, idPedido) {
-  return ref.watch(pedidosRepositoryProvider).obtener(idPedido);
-});
+final pedidoInfoProvider = FutureProvider.family
+    .autoDispose<PedidoDetalle, int>((ref, idPedido) {
+      return ref.watch(pedidosRepositoryProvider).obtener(idPedido);
+    });
 
-final pedidoSubpedidosProvider =
-    FutureProvider.family.autoDispose<List<SubpedidoResumen>, int>((ref, idPedido) {
-  return ref.watch(pedidosRepositoryProvider).subpedidosDe(idPedido);
-});
+final pedidoSubpedidosProvider = FutureProvider.family
+    .autoDispose<List<SubpedidoResumen>, int>((ref, idPedido) {
+      return ref.watch(pedidosRepositoryProvider).subpedidosDe(idPedido);
+    });
 
 /// Ítems de un subpedido, para `SubpedidoItemsScreen` (llega al tocar un
 /// subpedido en `PedidoInfoScreen`).
-final subpedidoItemsProvider =
-    FutureProvider.family.autoDispose<List<SubpedidoItemResumen>, int>((ref, idPedidoSubpedido) {
-  return ref.watch(pedidosRepositoryProvider).itemsDe(idPedidoSubpedido);
-});
+final subpedidoItemsProvider = FutureProvider.family
+    .autoDispose<List<SubpedidoItemResumen>, int>((ref, idPedidoSubpedido) {
+      return ref.watch(pedidosRepositoryProvider).itemsDe(idPedidoSubpedido);
+    });
 
 final pedidosBusquedaProvider = StateProvider<String>((ref) => '');
+
+/// Filtro por estado agregado en `PedidosHomeScreen` — puramente client-side
+/// (a diferencia de `q`, que sí viaja al backend): se aplica sobre el
+/// resultado ya agrupado por pedido, así que filtrar antes de agrupar
+/// rompería el cálculo del "cuello de botella" (ver `_agruparPorPedido`).
+final pedidosFiltroEstadoProvider = StateProvider<String?>((ref) => null);
 
 /// Módulo "Pedidos" (`PedidosHomeScreen`): el backend ya devuelve solo los
 /// subpedidos visibles para el permiso del usuario (ver
@@ -41,8 +48,23 @@ final pedidosBusquedaProvider = StateProvider<String>((ref) => '');
 /// conjunto completo (sin filtrar por estado) porque la lista agrupa por
 /// pedido y necesita ver todos sus subpedidos para calcular el estado
 /// agregado (el más atrasado manda, ver `_estadoAgregado` en la pantalla).
-final pedidosSeguimientoProvider =
-    FutureProvider.family.autoDispose<List<SubpedidoSeguimiento>, String>((ref, query) {
-  enableSilentRefresh(ref, interval: const Duration(seconds: 20));
-  return ref.watch(pedidosRepositoryProvider).seguimiento(q: query.isEmpty ? null : query);
-});
+final pedidosSeguimientoProvider = FutureProvider.family
+    .autoDispose<List<SubpedidoSeguimiento>, String>((ref, query) {
+      enableSilentRefresh(ref, interval: const Duration(seconds: 20));
+      return ref
+          .watch(pedidosRepositoryProvider)
+          .seguimiento(q: query.isEmpty ? null : query);
+    });
+
+/// Complemento de `pedidosSeguimientoProvider`: pedidos `ACTIVO` que
+/// todavía no tienen ningún subpedido (ver `PedidoSinSubpedidos`) — sin
+/// esto quedan invisibles en `PedidosHomeScreen`, porque el listado de
+/// arriba parte de la tabla de subpedidos y no tiene fila que traer para
+/// ellos.
+final pedidosSinSubpedidosProvider = FutureProvider.family
+    .autoDispose<List<PedidoSinSubpedidos>, String>((ref, query) {
+      enableSilentRefresh(ref, interval: const Duration(seconds: 20));
+      return ref
+          .watch(pedidosRepositoryProvider)
+          .sinSubpedidos(q: query.isEmpty ? null : query);
+    });

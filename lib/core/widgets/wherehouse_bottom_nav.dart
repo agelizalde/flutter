@@ -22,7 +22,13 @@ class WherehouseShell extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final noLeidas = ref.watch(misNotificacionesProvider).value?.where((n) => !n.leida).length ?? 0;
+    final noLeidas =
+        ref
+            .watch(misNotificacionesProvider)
+            .value
+            ?.where((n) => !n.leida)
+            .length ??
+        0;
 
     return Scaffold(
       body: navigationShell,
@@ -51,14 +57,23 @@ class WherehouseShell extends ConsumerWidget {
     );
 
     try {
-      final resultado = await ref.read(escanerRepositoryProvider).resolver(codigo);
+      final resultado = await ref
+          .read(escanerRepositoryProvider)
+          .resolver(codigo);
       if (!context.mounted) return;
       Navigator.of(context, rootNavigator: true).pop();
-      await resolverYNavegar(context, ref, resultado, codigoNoEncontrado: codigo);
+      await resolverYNavegar(
+        context,
+        ref,
+        resultado,
+        codigoNoEncontrado: codigo,
+      );
     } catch (e) {
       if (!context.mounted) return;
       Navigator.of(context, rootNavigator: true).pop();
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(describeError(e))));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(describeError(e))));
     }
   }
 }
@@ -98,7 +113,11 @@ class _BottomBar extends StatelessWidget {
                 decoration: const BoxDecoration(
                   color: AppColors.surface,
                   boxShadow: [
-                    BoxShadow(color: Color(0x14000000), blurRadius: 20, offset: Offset(0, -4)),
+                    BoxShadow(
+                      color: Color(0x14000000),
+                      blurRadius: 20,
+                      offset: Offset(0, -4),
+                    ),
                   ],
                 ),
                 child: Row(
@@ -169,7 +188,11 @@ class _EscanearButton extends StatelessWidget {
         shape: BoxShape.circle,
         border: Border.all(color: AppColors.surface, width: 4),
         boxShadow: const [
-          BoxShadow(color: Color(0x402563EB), blurRadius: 16, offset: Offset(0, 6)),
+          BoxShadow(
+            color: Color(0x402563EB),
+            blurRadius: 16,
+            offset: Offset(0, 6),
+          ),
         ],
       ),
       child: Material(
@@ -178,7 +201,11 @@ class _EscanearButton extends StatelessWidget {
         child: InkWell(
           onTap: onTap,
           customBorder: const CircleBorder(),
-          child: const Icon(Icons.qr_code_scanner, color: Colors.white, size: 28),
+          child: const Icon(
+            Icons.qr_code_scanner,
+            color: Colors.white,
+            size: 28,
+          ),
         ),
       ),
     );
@@ -222,7 +249,10 @@ class _NavItem extends StatelessWidget {
                     child: Container(
                       width: 8,
                       height: 8,
-                      decoration: const BoxDecoration(color: AppColors.prioridadUrgente, shape: BoxShape.circle),
+                      decoration: const BoxDecoration(
+                        color: AppColors.prioridadUrgente,
+                        shape: BoxShape.circle,
+                      ),
                     ),
                   ),
               ],
@@ -230,7 +260,11 @@ class _NavItem extends StatelessWidget {
             const SizedBox(height: 4),
             Text(
               label,
-              style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: color),
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                color: color,
+              ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),

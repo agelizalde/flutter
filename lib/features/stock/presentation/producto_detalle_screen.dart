@@ -63,6 +63,7 @@ class _Contenido extends StatelessWidget {
                     etiqueta: 'Cantidad real',
                     valor: r.stockTotal,
                     unidad: r.unidadSimbolo,
+                    pesable: detalle.producto.unidadPesable,
                     color: AppColors.text,
                   ),
                 ),
@@ -72,6 +73,7 @@ class _Contenido extends StatelessWidget {
                     etiqueta: 'Reservada',
                     valor: r.stockReservado,
                     unidad: r.unidadSimbolo,
+                    pesable: detalle.producto.unidadPesable,
                     color: AppColors.waTx,
                   ),
                 ),
@@ -81,6 +83,7 @@ class _Contenido extends StatelessWidget {
                     etiqueta: 'Disponible',
                     valor: r.stockDisponible,
                     unidad: r.unidadSimbolo,
+                    pesable: detalle.producto.unidadPesable,
                     color: r.stockDisponible > 0 ? AppColors.okTx : AppColors.erTx,
                   ),
                 ),
@@ -122,7 +125,7 @@ class _Contenido extends StatelessWidget {
                         .map(
                           (e) => Padding(
                             padding: const EdgeInsets.only(bottom: 10),
-                            child: _ExistenciaRow(existencia: e),
+                            child: _ExistenciaRow(existencia: e, pesable: detalle.producto.unidadPesable),
                           ),
                         )
                         .toList(),
@@ -295,9 +298,10 @@ class _HeroChip extends StatelessWidget {
 }
 
 class _ExistenciaRow extends StatelessWidget {
-  const _ExistenciaRow({required this.existencia});
+  const _ExistenciaRow({required this.existencia, required this.pesable});
 
   final ExistenciaStock existencia;
+  final bool pesable;
 
   Color _colorVencimiento(DateTime? fecha) {
     if (fecha == null) return AppColors.muted;
@@ -392,16 +396,19 @@ class _ExistenciaRow extends StatelessWidget {
                 etiqueta: 'Real',
                 valor: existencia.cantidad,
                 unidad: existencia.unidadSimbolo,
+                pesable: pesable,
               ),
               _MiniCantidad(
                 etiqueta: 'Reservada',
                 valor: existencia.cantidadReservadaPicking,
                 unidad: existencia.unidadSimbolo,
+                pesable: pesable,
               ),
               _MiniCantidad(
                 etiqueta: 'Disponible',
                 valor: existencia.cantidadDisponible,
                 unidad: existencia.unidadSimbolo,
+                pesable: pesable,
                 destacar: true,
               ),
             ],
@@ -417,12 +424,14 @@ class _MiniCantidad extends StatelessWidget {
     required this.etiqueta,
     required this.valor,
     required this.unidad,
+    required this.pesable,
     this.destacar = false,
   });
 
   final String etiqueta;
   final double valor;
   final String unidad;
+  final bool pesable;
   final bool destacar;
 
   @override
@@ -435,7 +444,7 @@ class _MiniCantidad extends StatelessWidget {
           style: const TextStyle(fontSize: 11, color: AppColors.muted),
         ),
         Text(
-          '${valor.toStringAsFixed(0)} $unidad',
+          '${formatCantidad(valor, pesable: pesable)} $unidad',
           style: TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.w800,
@@ -454,12 +463,14 @@ class _KpiBox extends StatelessWidget {
     required this.etiqueta,
     required this.valor,
     required this.unidad,
+    required this.pesable,
     required this.color,
   });
 
   final String etiqueta;
   final double valor;
   final String unidad;
+  final bool pesable;
   final Color color;
 
   @override
@@ -478,7 +489,7 @@ class _KpiBox extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            valor.toStringAsFixed(0),
+            formatCantidad(valor, pesable: pesable),
             style: TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.w800,

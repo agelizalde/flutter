@@ -129,7 +129,7 @@ class _HeroLogin extends StatelessWidget {
           ),
           const SizedBox(height: 20),
           const Text(
-            'Wherehouse',
+            'RS - WH',
             style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: Colors.white, letterSpacing: -0.3),
           ),
           const SizedBox(height: 6),

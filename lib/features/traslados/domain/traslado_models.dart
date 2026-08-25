@@ -26,6 +26,9 @@ class AlertaReacomodo {
     required this.cantidadDisponible,
     this.idTraspasoBorrador,
     this.codigoTraspasoBorrador,
+    this.idUbicacionPreferida,
+    this.ubicacionPreferidaNombre,
+    this.ubicacionPreferidaCodigo,
   });
 
   factory AlertaReacomodo.fromJson(Map<String, dynamic> j) => AlertaReacomodo(
@@ -46,6 +49,9 @@ class AlertaReacomodo {
     cantidadDisponible: parseDouble(j['cantidad_disponible']),
     idTraspasoBorrador: j['id_traspaso_borrador'] as int?,
     codigoTraspasoBorrador: j['codigo_traspaso_borrador'] as String?,
+    idUbicacionPreferida: j['id_ubicacion_preferida'] as int?,
+    ubicacionPreferidaNombre: j['ubicacion_preferida_nombre'] as String?,
+    ubicacionPreferidaCodigo: j['ubicacion_preferida_codigo'] as String?,
   );
 
   final int idExistencia;
@@ -67,6 +73,12 @@ class AlertaReacomodo {
   final double cantidadDisponible;
   final int? idTraspasoBorrador;
   final String? codigoTraspasoBorrador;
+
+  /// Ubicación recomendada del producto (`productos_almacenaje.id_ubicacion_preferida`),
+  /// null si no tiene una configurada.
+  final int? idUbicacionPreferida;
+  final String? ubicacionPreferidaNombre;
+  final String? ubicacionPreferidaCodigo;
 }
 
 /// Header de `traspasos` (ver `traslados_ver.py::traslados_list`/`traslados_get`).

@@ -42,7 +42,7 @@ dependencies:
   flutter_secure_storage: ^10.3.1
   go_router: ^17.3.0
   connectivity_plus: ^7.2.0
-  mobile_scanner: ^7.2.0
+  mobile_scanner: ^7.4.0
   riverpod: ^3.3.2
   shared_preferences: ^2.5.3
   barcode_widget: ^2.0.4
@@ -61,6 +61,7 @@ dev_dependencies:
   riverpod_generator: ^4.0.4
   build_runner: ^2.15.0
   drift_dev: ^2.34.0
+  flutter_launcher_icons: ^0.14.4
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -75,6 +76,7 @@ flutter:
 
   assets:
     - assets/images/logo.jpg
+    - assets/images/app_icon.png
 
   # To add assets to your application, add an assets section, like this:
   # assets:
@@ -106,3 +108,19 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+
+# Configuración de flutter_launcher_icons — genera el ícono de la app
+# (Android/iOS/Web) a partir del logo de River Supply. Correr con:
+#   dart run flutter_launcher_icons
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: true
+  image_path: "assets/images/app_icon.png"
+  min_sdk_android: 21
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: "assets/images/app_icon_foreground.png"
+  web:
+    generate: true
+    image_path: "assets/images/app_icon.png"
+    background_color: "#FFFFFF"
+    theme_color: "#2D7EC0"

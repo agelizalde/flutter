@@ -86,6 +86,7 @@ class ExistenciaStock {
     required this.productoNombre,
     required this.idUnidadMedida,
     required this.unidadSimbolo,
+    required this.unidadPesable,
     required this.idUbicacion,
     required this.ubicacionNombre,
     required this.ubicacionCodigo,
@@ -93,6 +94,10 @@ class ExistenciaStock {
     required this.cantidad,
     required this.cantidadReservadaPicking,
     required this.cantidadDisponible,
+    this.esUbicacionRecomendada = false,
+    this.idUbicacionPreferida,
+    this.ubicacionPreferidaNombre,
+    this.ubicacionPreferidaCodigo,
   });
 
   factory ExistenciaStock.fromJson(Map<String, dynamic> j) => ExistenciaStock(
@@ -105,6 +110,7 @@ class ExistenciaStock {
     productoNombre: j['producto_nombre'] as String? ?? '',
     idUnidadMedida: j['id_unidad_medida'] as int,
     unidadSimbolo: j['unidad_simbolo'] as String? ?? '',
+    unidadPesable: j['unidad_pesable'] == 1 || j['unidad_pesable'] == true,
     idUbicacion: j['id_ubicacion'] as int,
     ubicacionNombre: j['ubicacion_nombre'] as String? ?? '',
     ubicacionCodigo: j['ubicacion_codigo'] as String? ?? '',
@@ -112,6 +118,10 @@ class ExistenciaStock {
     cantidad: parseDouble(j['cantidad']),
     cantidadReservadaPicking: parseDouble(j['cantidad_reservada_picking']),
     cantidadDisponible: parseDouble(j['cantidad_disponible']),
+    esUbicacionRecomendada: j['es_ubicacion_recomendada'] == 1 || j['es_ubicacion_recomendada'] == true,
+    idUbicacionPreferida: j['id_ubicacion_preferida'] as int?,
+    ubicacionPreferidaNombre: j['ubicacion_preferida_nombre'] as String?,
+    ubicacionPreferidaCodigo: j['ubicacion_preferida_codigo'] as String?,
   );
 
   final int idExistencia;
@@ -123,6 +133,9 @@ class ExistenciaStock {
   final String productoNombre;
   final int idUnidadMedida;
   final String unidadSimbolo;
+
+  /// `unidades.pesable` — ver `formatCantidad` en `core/utils/parsing.dart`.
+  final bool unidadPesable;
   final int idUbicacion;
   final String ubicacionNombre;
   final String ubicacionCodigo;
@@ -130,6 +143,17 @@ class ExistenciaStock {
   final double cantidad;
   final double cantidadReservadaPicking;
   final double cantidadDisponible;
+
+  /// `true` si esta ubicación coincide con la "ubicación recomendada" del
+  /// producto (`productos_almacenaje.id_ubicacion_preferida`).
+  final bool esUbicacionRecomendada;
+
+  /// Ubicación recomendada del producto, resuelta (null si no tiene una
+  /// configurada) — vale para cualquier fila del mismo producto, sea o no
+  /// la ubicación de esta existencia puntual.
+  final int? idUbicacionPreferida;
+  final String? ubicacionPreferidaNombre;
+  final String? ubicacionPreferidaCodigo;
 }
 
 /// Fila de `GET /stock/por-ubicacion` — resultado de búsqueda por ubicación.
@@ -250,6 +274,7 @@ class ProductoDetalle {
     required this.idUnidadBase,
     required this.unidadNombre,
     required this.unidadSimbolo,
+    required this.unidadPesable,
     this.claseProducto,
     this.fotoUrl,
   });
@@ -266,6 +291,7 @@ class ProductoDetalle {
     idUnidadBase: j['id_unidad_base'] as int,
     unidadNombre: j['unidad_nombre'] as String? ?? '',
     unidadSimbolo: j['unidad_simbolo'] as String? ?? '',
+    unidadPesable: j['unidad_pesable'] == 1 || j['unidad_pesable'] == true,
     claseProducto: j['clase_producto'] as String?,
     fotoUrl: j['foto_url'] as String?,
   );
@@ -281,6 +307,12 @@ class ProductoDetalle {
   final int idUnidadBase;
   final String unidadNombre;
   final String unidadSimbolo;
+
+  /// `unidades.pesable` — solo estas unidades (ej. Kilogramo) pueden tener
+  /// cantidades con parte decimal; el resto siempre se redondea a entero
+  /// (ver `formatCantidad`). Mismo campo que ya usa el backend para picking
+  /// por peso y recepción (`picking_operario_service.py`, `recepcion_oc.py`).
+  final bool unidadPesable;
 
   /// 'FISICO' | 'SERVICIO' | 'KIT'.
   final String? claseProducto;

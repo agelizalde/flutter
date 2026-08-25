@@ -30,7 +30,11 @@ class DebugScreenTag extends StatelessWidget {
               ),
               child: Text(
                 label,
-                style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w700),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
           ),
