@@ -7,6 +7,7 @@ import '../../picking_operario/application/picking_providers.dart';
 import '../../picking_operario/domain/picking_models.dart';
 import '../../recepcion/application/recepcion_providers.dart';
 import '../../recepcion/domain/orden_compra_models.dart';
+import '../../recepcion/domain/recepcion_models.dart' show ZonaSimple;
 import '../../stock/application/stock_providers.dart';
 import '../../stock/domain/stock_models.dart';
 
@@ -35,6 +36,17 @@ final escanerUbicacionesResultsProvider =
       final q = ref.watch(escanerQueryProvider).trim();
       if (q.isEmpty) return Future.value(const []);
       return ref.watch(stockRepositoryProvider).buscarUbicaciones(q);
+    });
+
+/// Catálogo de zonas (`GET /ubicaciones/zonas`) — no hay un agregado de
+/// stock por zona como sí existe para ubicación (`UbicacionStock`), así que
+/// acá se pega directo a `ZonasApi` en vez de pasar por un repositorio.
+final escanerZonasResultsProvider =
+    FutureProvider.autoDispose<List<ZonaSimple>>((ref) {
+      enableSilentRefresh(ref);
+      final q = ref.watch(escanerQueryProvider).trim();
+      if (q.isEmpty) return Future.value(const []);
+      return ref.watch(zonasApiProvider).buscar(q: q);
     });
 
 /// La OC solo se resuelve por código exacto (no hay búsqueda parcial de OC

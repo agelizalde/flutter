@@ -10,11 +10,12 @@ import '../domain/escaneo_resultado.dart';
 
 /// Resuelve un código escaneado desde el botón de escaneo genérico (Home /
 /// bottom nav): puede ser el código de barra de un producto, el código de
-/// una ubicación, el código de una OC, de un pedido, de una orden de
-/// producción, o el identificador/código de barras de un contenedor.
-/// Dispara las 6 búsquedas en paralelo (cada una ya sabe distinguir "no
-/// encontrado" de un error real) y prioriza en ese orden si por algún motivo
-/// matchea más de una — no debería pasar, son espacios de código separados.
+/// una ubicación, el código de una zona, el código de una OC, de un pedido,
+/// de una orden de producción, o el identificador/código de barras de un
+/// contenedor. Dispara las 7 búsquedas en paralelo (cada una ya sabe
+/// distinguir "no encontrado" de un error real) y prioriza en ese orden si
+/// por algún motivo matchea más de una — no debería pasar, son espacios de
+/// código separados.
 ///
 /// Cada búsqueda puede vivir detrás de un permiso de módulo distinto
 /// (`recepciones.ver`, `picking_operario.ver`, etc.) que no tiene nada que
@@ -27,6 +28,7 @@ class EscanerRepository {
   EscanerRepository(
     this._productosApi,
     this._ubicacionesApi,
+    this._zonasApi,
     this._recepcionRepository,
     this._pedidosRepository,
     this._produccionRepository,
@@ -35,6 +37,7 @@ class EscanerRepository {
 
   final ProductosApi _productosApi;
   final UbicacionesApi _ubicacionesApi;
+  final ZonasApi _zonasApi;
   final RecepcionRepository _recepcionRepository;
   final PedidosRepository _pedidosRepository;
   final ProduccionRepository _produccionRepository;
@@ -46,6 +49,7 @@ class EscanerRepository {
     final resultados = await Future.wait([
       _buscarProducto(codigo),
       _buscarUbicacion(codigo),
+      _buscarZona(codigo),
       _buscarOc(codigo),
       _buscarPedido(codigo),
       _buscarOrdenProduccion(codigo),
@@ -83,6 +87,24 @@ class EscanerRepository {
     if (exactas.isEmpty) return null;
     final u = exactas.first;
     return EscaneoUbicacion(idUbicacion: u.idUbicacion, nombre: u.nombre);
+  }
+
+  /// Igual criterio que `_buscarUbicacion`: catálogo de zonas
+  /// (`GET /ubicaciones/zonas`, permiso `ubicacionzona.ver`), match exacto
+  /// por código, sin filtrar por almacén.
+  Future<EscaneoResultado?> _buscarZona(String codigo) async {
+    try {
+      final resultados = await _zonasApi.buscar(q: codigo);
+      final exactas = resultados.where(
+        (z) => (z.codigo ?? '').trim().toLowerCase() == codigo.toLowerCase(),
+      );
+      if (exactas.isEmpty) return null;
+      final z = exactas.first;
+      return EscaneoZona(idZona: z.idZona, nombre: z.nombre);
+    } catch (e) {
+      if (_esResultadoVacio(e)) return null;
+      rethrow;
+    }
   }
 
   Future<EscaneoResultado?> _buscarOc(String codigo) async {

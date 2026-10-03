@@ -22,10 +22,10 @@ import 'widgets/nuevo_pedido_sheet.dart';
 /// que todavía no tienen ningún subpedido (`GET /pedidos/sin-subpedidos`) —
 /// sin esto último, un pedido recién creado desde `NuevoPedidoSheet` queda
 /// invisible hasta que alguien le arma el primer subpedido desde la web.
-/// Buscador libre (server-side, aplica a ambas fuentes) y filtro por
-/// estado agregado (client-side, ver `pedidosFiltroEstadoProvider`). La
-/// lista se ordena por urgencia de ETA para que lo vencido/para hoy quede
-/// arriba, salvo lo ya `ENTREGADO`.
+/// Buscador libre (server-side, aplica a ambas fuentes). La lista se ordena
+/// por urgencia de ETA para que lo vencido/para hoy quede arriba, salvo lo
+/// ya `ENTREGADO` (sin filtro por estado — se sacaron los chips rápidos a
+/// pedido del usuario).
 class PedidosHomeScreen extends ConsumerStatefulWidget {
   const PedidosHomeScreen({super.key});
 
@@ -86,12 +86,31 @@ class _PedidosHomeScreenState extends ConsumerState<PedidosHomeScreen> {
     }
 
     final query = ref.watch(pedidosBusquedaProvider);
-    final filtroEstado = ref.watch(pedidosFiltroEstadoProvider);
     final subpedidosAsync = ref.watch(pedidosSeguimientoProvider(query));
     final sinSubpedidosAsync = ref.watch(pedidosSinSubpedidosProvider(query));
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Pedidos')),
+      backgroundColor: AppColors.pageBg,
+      appBar: AppBar(
+        title: const Text('Pedidos'),
+        actions: [
+          if (puedeCrear)
+            Padding(
+              padding: const EdgeInsets.only(right: 16),
+              child: FilledButton.icon(
+                onPressed: _nuevoPedido,
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size(0, 36),
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  backgroundColor: AppColors.accent,
+                  textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+                ),
+                icon: const Icon(Icons.add, size: 18),
+                label: const Text('Nuevo pedido'),
+              ),
+            ),
+        ],
+      ),
       body: Column(
         children: [
           Padding(
@@ -115,19 +134,11 @@ class _PedidosHomeScreenState extends ConsumerState<PedidosHomeScreen> {
               child: _Contenido(
                 subpedidosAsync: subpedidosAsync,
                 sinSubpedidosAsync: sinSubpedidosAsync,
-                filtroEstado: filtroEstado,
               ),
             ),
           ),
         ],
       ),
-      floatingActionButton: puedeCrear
-          ? FloatingActionButton.extended(
-              onPressed: _nuevoPedido,
-              icon: const Icon(Icons.add),
-              label: const Text('Nuevo pedido'),
-            )
-          : null,
     );
   }
 }
@@ -135,20 +146,20 @@ class _PedidosHomeScreenState extends ConsumerState<PedidosHomeScreen> {
 /// Junta las dos fuentes (`AsyncValue.when` no tiene combinador de a dos
 /// out-of-the-box) y recién ahí arma la lista — mientras cualquiera esté
 /// cargando se muestra el spinner, y el primer error que aparezca corta el
-/// combinado, igual que haría un solo `.when()`.
-class _Contenido extends ConsumerWidget {
+/// combinado, igual que haría un solo `.when()`. Ya no filtra por estado
+/// agregado (se sacaron los chips rápidos a pedido del usuario): la lista
+/// completa siempre se ordena por urgencia de ETA.
+class _Contenido extends StatelessWidget {
   const _Contenido({
     required this.subpedidosAsync,
     required this.sinSubpedidosAsync,
-    required this.filtroEstado,
   });
 
   final AsyncValue<List<SubpedidoSeguimiento>> subpedidosAsync;
   final AsyncValue<List<PedidoSinSubpedidos>> sinSubpedidosAsync;
-  final String? filtroEstado;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     if (subpedidosAsync.isLoading || sinSubpedidosAsync.isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -171,92 +182,55 @@ class _Contenido extends ConsumerWidget {
     final todos = [
       ..._agruparPorPedido(subpedidosAsync.value ?? const []),
       ..._deSinSubpedidos(sinSubpedidosAsync.value ?? const []),
-    ];
+    ]..sort(_compararPorUrgencia);
 
     if (todos.isEmpty) {
-      return ListView(
-        children: const [
-          SizedBox(height: 100),
-          Icon(Icons.receipt_long_outlined, size: 40, color: AppColors.faint),
-          SizedBox(height: 12),
-          Center(
-            child: Text(
-              'Sin resultados',
-              style: TextStyle(color: AppColors.muted),
-            ),
-          ),
-        ],
+      return const _EstadoVacio(
+        icono: Icons.receipt_long_outlined,
+        texto: 'Sin resultados',
       );
     }
 
-    final conteos = <String, int>{};
-    for (final p in todos) {
-      conteos[p.estadoAgregado] = (conteos[p.estadoAgregado] ?? 0) + 1;
-    }
+    return ListView.separated(
+      padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
+      itemCount: todos.length + 1,
+      separatorBuilder: (_, _) => const SizedBox(height: 10),
+      itemBuilder: (context, i) {
+        if (i == 0) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 2),
+            child: Text(
+              '${todos.length} pedido(s)',
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.muted),
+            ),
+          );
+        }
+        return _PedidoTile(pedido: todos[i - 1]);
+      },
+    );
+  }
+}
 
-    final filtrados =
-        (filtroEstado == null
-              ? todos
-              : todos.where((p) => p.estadoAgregado == filtroEstado).toList())
-          ..sort(_compararPorUrgencia);
+class _EstadoVacio extends StatelessWidget {
+  const _EstadoVacio({required this.icono, required this.texto});
 
-    return Column(
-      children: [
-        SizedBox(
-          height: 40,
-          child: ListView(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            scrollDirection: Axis.horizontal,
-            children: [
-              _FiltroChip(
-                etiqueta: 'Todos (${todos.length})',
-                seleccionado: filtroEstado == null,
-                onTap: () =>
-                    ref.read(pedidosFiltroEstadoProvider.notifier).state = null,
-              ),
-              for (final e in _ordenChips)
-                if (conteos[e] != null) ...[
-                  const SizedBox(width: 8),
-                  _FiltroChip(
-                    etiqueta: '${_EstadoVisual.de(e).etiqueta} (${conteos[e]})',
-                    seleccionado: filtroEstado == e,
-                    onTap: () =>
-                        ref.read(pedidosFiltroEstadoProvider.notifier).state =
-                            e,
-                  ),
-                ],
-            ],
-          ),
+  final IconData icono;
+  final String texto;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icono, size: 40, color: AppColors.faint),
+            const SizedBox(height: 12),
+            Text(texto, style: const TextStyle(color: AppColors.muted)),
+          ],
         ),
-        const SizedBox(height: 10),
-        Expanded(
-          child: filtrados.isEmpty
-              ? ListView(
-                  children: const [
-                    SizedBox(height: 100),
-                    Icon(
-                      Icons.filter_alt_off_outlined,
-                      size: 40,
-                      color: AppColors.faint,
-                    ),
-                    SizedBox(height: 12),
-                    Center(
-                      child: Text(
-                        'Ningún pedido en este estado',
-                        style: TextStyle(color: AppColors.muted),
-                      ),
-                    ),
-                  ],
-                )
-              : ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-                  itemCount: filtrados.length,
-                  separatorBuilder: (_, _) => const SizedBox(height: 10),
-                  itemBuilder: (context, i) =>
-                      _PedidoTile(pedido: filtrados[i]),
-                ),
-        ),
-      ],
+      ),
     );
   }
 }
@@ -280,11 +254,6 @@ const _ordenEstados = [
 /// por eso vive separado de `_ordenEstados` (ese sí tiene que reflejar
 /// 1:1 lo que puede llegar en `/subpedidos/ver`).
 const _estadoSinSubpedidos = 'SIN_SUBPEDIDOS';
-
-/// Orden de los chips de filtro: "Sin subpedidos" primero (es lo que menos
-/// avanzó, ni siquiera tiene subpedidos armados) y de ahí el resto en el
-/// mismo orden de avance que `_ordenEstados`.
-const _ordenChips = [_estadoSinSubpedidos, ..._ordenEstados];
 
 /// Datos comunes que necesita `_PedidoTile`, vengan de un subpedido de
 /// seguimiento (`SubpedidoSeguimiento`, el caso normal) o de un pedido que
@@ -494,127 +463,115 @@ class _PedidoTile extends StatelessWidget {
         ? '${base.clienteNombre}  ·  ${pedido.totalSubpedidos} subpedidos'
         : base.clienteNombre;
 
+    // Franja de urgencia a la izquierda (roja = vencido, ámbar = para hoy):
+    // permite escanear la lista de un vistazo sin tener que leer la ETA de
+    // cada tarjeta. Neutra (transparente) para el resto, así el ancho de la
+    // tarjeta no varía entre ítems.
+    final franjaUrgencia = urgencia <= 0 ? etaColor : Colors.transparent;
+
     return Material(
-      color: Colors.white,
+      color: AppColors.surface,
       borderRadius: BorderRadius.circular(16),
+      clipBehavior: Clip.antiAlias,
       child: InkWell(
-        borderRadius: BorderRadius.circular(16),
         onTap: () => context.push('/pedidos/info/${base.idPedido}'),
         child: Container(
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.04),
+                color: Colors.black.withValues(alpha: 0.05),
                 blurRadius: 12,
                 offset: const Offset(0, 4),
               ),
             ],
           ),
-          padding: const EdgeInsets.all(14),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: AppColors.accentSoft,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(
-                  _iconoTipoSucursal(base),
-                  color: AppColors.accentDark,
-                  size: 20,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
+          child: IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Container(width: 4, color: franjaUrgencia),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.all(14),
+                    child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Expanded(
-                          child: Text.rich(
-                            TextSpan(
-                              children: _metaSpans(base, urgencia, etaColor),
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontSize: 13),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
                         Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 5,
-                          ),
+                          width: 40,
+                          height: 40,
+                          alignment: Alignment.center,
                           decoration: BoxDecoration(
-                            color: estado.bg,
-                            borderRadius: BorderRadius.circular(999),
+                            color: AppColors.accentSoft,
+                            borderRadius: BorderRadius.circular(12),
                           ),
-                          child: Text(
-                            estado.etiqueta,
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                              color: estado.fg,
-                            ),
+                          child: Icon(
+                            _iconoTipoSucursal(base),
+                            color: AppColors.accentDark,
+                            size: 20,
                           ),
                         ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Expanded(
+                                    child: Text.rich(
+                                      TextSpan(
+                                        children: _metaSpans(base, urgencia, etaColor),
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(fontSize: 13),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                      vertical: 5,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: estado.bg,
+                                      borderRadius: BorderRadius.circular(999),
+                                    ),
+                                    child: Text(
+                                      estado.etiqueta,
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w700,
+                                        color: estado.fg,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                segundaLinea,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: AppColors.muted,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        const Icon(Icons.chevron_right, color: AppColors.faint, size: 20),
                       ],
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      segundaLinea,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: AppColors.muted,
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
-              ),
-              const SizedBox(width: 4),
-              const Icon(Icons.chevron_right, color: AppColors.faint, size: 20),
-            ],
+              ],
+            ),
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _FiltroChip extends StatelessWidget {
-  const _FiltroChip({
-    required this.etiqueta,
-    required this.seleccionado,
-    required this.onTap,
-  });
-
-  final String etiqueta;
-  final bool seleccionado;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return ChoiceChip(
-      label: Text(etiqueta),
-      selected: seleccionado,
-      onSelected: (_) => onTap(),
-      selectedColor: AppColors.accentSoft,
-      labelStyle: TextStyle(
-        color: seleccionado ? AppColors.accentDark : AppColors.sub,
-        fontWeight: FontWeight.w600,
-        fontSize: 12,
-      ),
-      side: BorderSide(
-        color: seleccionado ? AppColors.accent : AppColors.border,
       ),
     );
   }

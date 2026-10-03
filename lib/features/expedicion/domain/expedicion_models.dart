@@ -267,3 +267,50 @@ class DetalleCarga {
     return null;
   }
 }
+
+/// Devolución pendiente generada al reducir/quitar por Excel (desde Ventas)
+/// un ítem que ya se había escaneado en la carga — ver
+/// `EXPEDICION/BD_CARGA_DEVOLUCION.txt`. El producto ya salió de stock de
+/// verdad al escanearse, así que hay que retirarlo físicamente del camión
+/// para poder confirmar (recién ahí se acredita stock real en la ubicación
+/// de reacomodo indicada).
+class DevolucionCarga {
+  DevolucionCarga({
+    required this.idDevolucion,
+    required this.idPedidoSubpedidoItem,
+    required this.idProducto,
+    this.productoNombre,
+    this.productoCodigo,
+    this.unidadSimbolo,
+    required this.cantidad,
+    required this.estado,
+    this.ubicacionDestinoCodigo,
+    this.ubicacionDestinoNombre,
+  });
+
+  factory DevolucionCarga.fromJson(Map<String, dynamic> j) => DevolucionCarga(
+    idDevolucion: j['id_devolucion'] as int,
+    idPedidoSubpedidoItem: j['id_pedido_subpedido_item'] as int,
+    idProducto: j['id_producto'] as int,
+    productoNombre: j['producto_nombre'] as String?,
+    productoCodigo: j['producto_codigo'] as String?,
+    unidadSimbolo: j['unidad_simbolo'] as String?,
+    cantidad: parseDouble(j['cantidad']),
+    estado: j['estado'] as String? ?? 'PENDIENTE',
+    ubicacionDestinoCodigo: j['ubicacion_destino_codigo'] as String?,
+    ubicacionDestinoNombre: j['ubicacion_destino_nombre'] as String?,
+  );
+
+  final int idDevolucion;
+  final int idPedidoSubpedidoItem;
+  final int idProducto;
+  final String? productoNombre;
+  final String? productoCodigo;
+  final String? unidadSimbolo;
+  final double cantidad;
+
+  /// 'PENDIENTE' | 'CONFIRMADA'
+  final String estado;
+  final String? ubicacionDestinoCodigo;
+  final String? ubicacionDestinoNombre;
+}

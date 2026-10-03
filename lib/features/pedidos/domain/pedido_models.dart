@@ -7,39 +7,51 @@ import '../../../core/utils/parsing.dart' show parseDateOrNull, parseDouble;
 class PedidoDetalle {
   PedidoDetalle({
     required this.idPedido,
+    required this.idCliente,
     required this.codigoPedido,
     required this.estado,
+    required this.rowVersion,
     required this.clienteNombre,
     this.clienteSucursalNombre,
     this.eta,
     this.observaciones,
+    this.idLugarEntrega,
     this.lugarEntregaNombre,
     this.vehiculoNombre,
   });
 
   factory PedidoDetalle.fromJson(Map<String, dynamic> j) => PedidoDetalle(
     idPedido: j['id_pedido'] as int,
+    idCliente: j['id_cliente'] as int,
     codigoPedido: j['codigo_pedido'] as String? ?? '',
     estado: j['estado'] as String? ?? 'BORRADOR',
+    rowVersion: j['row_version'] as int? ?? 1,
     clienteNombre: (j['cliente_razon_social'] as String?)?.isNotEmpty == true
         ? j['cliente_razon_social'] as String
         : (j['cliente_nombre'] as String? ?? ''),
     clienteSucursalNombre: j['cliente_sucursal_nombre'] as String?,
     eta: parseDateOrNull(j['eta']),
     observaciones: j['observaciones'] as String?,
+    idLugarEntrega: j['id_lugar_entrega'] as int?,
     lugarEntregaNombre: j['lugar_entrega_nombre'] as String?,
     vehiculoNombre: j['vehiculo_nombre'] as String?,
   );
 
   final int idPedido;
+  final int idCliente;
   final String codigoPedido;
 
   /// 'BORRADOR' | 'ACTIVO' | 'FINALIZADO' | 'ANULADO'
   final String estado;
+
+  /// Para el `expected_version` de PATCH/anular — control de concurrencia
+  /// optimista (ver `pedidos_service.py::pedidos_patch`).
+  final int rowVersion;
   final String clienteNombre;
   final String? clienteSucursalNombre;
   final DateTime? eta;
   final String? observaciones;
+  final int? idLugarEntrega;
   final String? lugarEntregaNombre;
   final String? vehiculoNombre;
 }
@@ -50,19 +62,28 @@ class PedidoDetalle {
 class SubpedidoResumen {
   SubpedidoResumen({
     required this.idPedidoSubpedido,
+    required this.idPedido,
     required this.estado,
     required this.tipoNombre,
     required this.totalItemsActivos,
+    required this.rowVersion,
   });
 
   factory SubpedidoResumen.fromJson(Map<String, dynamic> j) => SubpedidoResumen(
     idPedidoSubpedido: j['id_pedido_subpedido'] as int,
+    idPedido: j['id_pedido'] as int,
     estado: j['estado'] as String? ?? 'BORRADOR',
     tipoNombre: j['tipo_nombre'] as String? ?? '',
     totalItemsActivos: j['total_items_activos'] as int? ?? 0,
+    rowVersion: j['row_version'] as int? ?? 1,
   );
 
   final int idPedidoSubpedido;
+
+  /// Pedido dueño de este subpedido (`ps.id_pedido`) — necesario para poder
+  /// invalidar `pedidoSubpedidosProvider`/`pedidoInfoProvider` desde
+  /// `SubpedidoItemsScreen` al confirmar (ver ahí).
+  final int idPedido;
 
   /// 'BORRADOR' | 'CONFIRMADO' | 'PICKING' | 'CONTROL' | 'EXPEDIDO' |
   /// 'ENTREGADO' | 'PEND_CONTROL_GER' | 'PEND_FACTURAR' | 'FACTURADO' |
@@ -70,6 +91,10 @@ class SubpedidoResumen {
   final String estado;
   final String tipoNombre;
   final int totalItemsActivos;
+
+  /// Para el `expected_version` de `POST .../confirmar` — control de
+  /// concurrencia optimista (ver `subpedido_confirmacion_service.py`).
+  final int rowVersion;
 }
 
 /// Fila de `GET /pedidos/subpedidos/ver` (ver
@@ -218,6 +243,172 @@ class SubpedidoItemResumen {
   /// 'PICKEADO' | 'CONTROL_PARCIAL' | 'CONTROLADO' | 'EXPEDIDO' | 'ENTREGADO'
   final String estado;
   final String? observacion;
+}
+
+/// Resultado de `POST /pedidos/subpedidos/{id}/confirmar` (ver
+/// `subpedido_confirmacion_service.py::subpedido_confirmar`) — solo lo que
+/// necesita `SubpedidoItemsScreen`: el nuevo estado para refrescar el badge,
+/// y qué ítems quedaron con cantidad pendiente (`detalle_reservas[].
+/// cantidad_pendiente > 0`) porque no había stock suficiente al reservar. A
+/// diferencia de la web (que ahí abre un picker de decisión por ítem:
+/// confirmar/combinar/esperar/compra externa/eliminar), esta app aplica
+/// "esperar" automático sobre esos ítems — ver `aplicarDecisionEsperar` en
+/// `PedidosApi`.
+class SubpedidoConfirmarResultado {
+  SubpedidoConfirmarResultado({
+    required this.nuevoEstado,
+    required this.idsItemsSinStock,
+  });
+
+  factory SubpedidoConfirmarResultado.fromJson(Map<String, dynamic> j) {
+    final detalle = (j['detalle_reservas'] as List<dynamic>? ?? [])
+        .cast<Map<String, dynamic>>();
+    final pendientes = detalle
+        .where((d) => parseDouble(d['cantidad_pendiente']) > 0.0001)
+        .map((d) => d['id_pedido_subpedido_item'] as int)
+        .toList();
+    return SubpedidoConfirmarResultado(
+      nuevoEstado: j['nuevo_estado'] as String? ?? 'CONFIRMADO',
+      idsItemsSinStock: pendientes,
+    );
+  }
+
+  final String nuevoEstado;
+  final List<int> idsItemsSinStock;
+}
+
+/// Fila de `GET /pedidos/estandar?id_cliente=` (ver
+/// `pedidos_estandar_service.py::estandar_list`) — plantillas de "Pedido
+/// Estándar" del cliente, para el picker de `NuevoSubpedidoSheet`. Solo se
+/// piden las activas (`incluir_inactivos` default `false`): a diferencia de
+/// la web, acá no hay forma de desactivar/reactivar, así que no tiene
+/// sentido ofrecer una inactiva para elegir.
+class PedidoEstandarResumen {
+  PedidoEstandarResumen({
+    required this.idPedidoEstandar,
+    required this.nombre,
+    this.descripcion,
+    required this.cantidadSubpedidos,
+    required this.cantidadItems,
+  });
+
+  factory PedidoEstandarResumen.fromJson(Map<String, dynamic> j) =>
+      PedidoEstandarResumen(
+        idPedidoEstandar: j['id_pedido_estandar'] as int,
+        nombre: j['nombre'] as String? ?? '',
+        descripcion: j['descripcion'] as String?,
+        cantidadSubpedidos: j['cantidad_subpedidos'] as int? ?? 0,
+        cantidadItems: j['cantidad_items'] as int? ?? 0,
+      );
+
+  final int idPedidoEstandar;
+  final String nombre;
+  final String? descripcion;
+  final int cantidadSubpedidos;
+  final int cantidadItems;
+}
+
+/// Resultado de `POST /pedidos/estandar/{id}/aplicar` (ver
+/// `pedidos_estandar_service.py::estandar_aplicar`) — crea, en una sola
+/// transacción, todos los subpedidos + ítems de la plantilla elegida sobre
+/// el pedido actual.
+class EstandarAplicarResultado {
+  EstandarAplicarResultado({
+    required this.nombreEstandar,
+    required this.totalSubpedidos,
+    required this.totalItems,
+  });
+
+  factory EstandarAplicarResultado.fromJson(Map<String, dynamic> j) =>
+      EstandarAplicarResultado(
+        nombreEstandar: j['nombre_estandar'] as String? ?? '',
+        totalSubpedidos: j['total_subpedidos'] as int? ?? 0,
+        totalItems: j['total_items'] as int? ?? 0,
+      );
+
+  final String nombreEstandar;
+  final int totalSubpedidos;
+  final int totalItems;
+}
+
+/// Resultado de `POST /pedidos/subpedidos/pedido/{id}/anular` (ver
+/// `subpedido_confirmacion_anulacion_reac.py::pedido_anular`) — anula todos
+/// los subpedidos activos del pedido y libera sus reservas de stock.
+class PedidoAnularResultado {
+  PedidoAnularResultado({required this.subpedidosAnulados});
+
+  factory PedidoAnularResultado.fromJson(Map<String, dynamic> j) =>
+      PedidoAnularResultado(
+        subpedidosAnulados: j['subpedidos_anulados'] as int? ?? 0,
+      );
+
+  final int subpedidosAnulados;
+}
+
+/// Config de creación de pedidos por almacén (`GET
+/// /ventas/pedidos-config/config`, ver `pedidos_config_service.py` /
+/// `NuevoPedidoModal.jsx` — `CONFIG_CREACION_DEFAULT`). Gobierna qué campos
+/// de `NuevoPedidoSheet` se muestran y cuáles son obligatorios; estos
+/// defaults reproducen el comportamiento de siempre (todo habilitado, nada
+/// obligatorio) para cuando el fetch falla (sin permiso `pedidos_config.ver`,
+/// migración sin correr, etc.) — mismo criterio que el `.catch()` de la web.
+class PedidosConfigCreacion {
+  const PedidosConfigCreacion({
+    this.sucursalHabilitada = true,
+    this.sucursalObligatoria = false,
+    this.etaHabilitada = true,
+    this.etaObligatoria = false,
+    this.lugarEntregaHabilitado = true,
+    this.lugarEntregaObligatorio = false,
+    this.vehiculoEntregaHabilitado = true,
+    this.vehiculoEntregaObligatorio = false,
+    this.observacionHabilitada = true,
+    this.permisoPgnHabilitado = true,
+    this.permisoAduanaHabilitado = true,
+    this.origenVacioHabilitado = true,
+    this.origenEstandarHabilitado = true,
+  });
+
+  factory PedidosConfigCreacion.fromJson(Map<String, dynamic> j) =>
+      PedidosConfigCreacion(
+        sucursalHabilitada: j['sucursal_habilitada'] as bool? ?? true,
+        sucursalObligatoria: j['sucursal_obligatoria'] as bool? ?? false,
+        etaHabilitada: j['eta_habilitada'] as bool? ?? true,
+        etaObligatoria: j['eta_obligatoria'] as bool? ?? false,
+        lugarEntregaHabilitado: j['lugar_entrega_habilitado'] as bool? ?? true,
+        lugarEntregaObligatorio:
+            j['lugar_entrega_obligatorio'] as bool? ?? false,
+        vehiculoEntregaHabilitado:
+            j['vehiculo_entrega_habilitado'] as bool? ?? true,
+        vehiculoEntregaObligatorio:
+            j['vehiculo_entrega_obligatorio'] as bool? ?? false,
+        observacionHabilitada: j['observacion_habilitada'] as bool? ?? true,
+        permisoPgnHabilitado: j['permiso_pgn_habilitado'] as bool? ?? true,
+        permisoAduanaHabilitado:
+            j['permiso_aduana_habilitado'] as bool? ?? true,
+        origenVacioHabilitado: j['origen_vacio_habilitado'] as bool? ?? true,
+        origenEstandarHabilitado:
+            j['origen_estandar_habilitado'] as bool? ?? true,
+      );
+
+  final bool sucursalHabilitada;
+  final bool sucursalObligatoria;
+  final bool etaHabilitada;
+  final bool etaObligatoria;
+  final bool lugarEntregaHabilitado;
+  final bool lugarEntregaObligatorio;
+  final bool vehiculoEntregaHabilitado;
+  final bool vehiculoEntregaObligatorio;
+  final bool observacionHabilitada;
+  final bool permisoPgnHabilitado;
+  final bool permisoAduanaHabilitado;
+
+  /// El origen "excel" de la web (subir el Excel del cliente) no está
+  /// disponible en esta app — no hay selector de archivos ni parser de
+  /// planillas en Flutter, se resuelve siempre desde la web. Por eso acá
+  /// solo se leen los otros dos orígenes.
+  final bool origenVacioHabilitado;
+  final bool origenEstandarHabilitado;
 }
 
 // =========================================================

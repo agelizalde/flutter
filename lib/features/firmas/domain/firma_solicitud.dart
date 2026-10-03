@@ -1,5 +1,32 @@
 import '../../../core/utils/parsing.dart';
 
+/// Código de `firmas_documentos_tipo` para la confirmación de entrega de un
+/// pedido (ver `firmas_config_default.py`) — el único tipo con vista propia
+/// en esta app (lista y detalle), ver [FirmaSolicitud.esPedidoEntrega].
+const tipoPedidoEntrega = 'PEDIDO_ENTREGA';
+
+/// Código de `firmas_documentos_tipo` para una orden de compra (ver
+/// `firmas_config_default.py`) — segundo tipo con vista propia en el
+/// detalle, ver [FirmaSolicitud.esOrdenCompra].
+const tipoOrdenCompra = 'OC';
+
+/// Código de `firmas_documentos_tipo` para una orden de pago (ver
+/// `firmas_config_default.py`) — sin vista propia en el detalle (usa el
+/// genérico monto/regla/motivo, ver `_DatosCard`), pero con la misma fila
+/// "Proveedor - Solicitante" / "N° - Fecha" que [tipoOrdenCompra] en la
+/// pantalla de pendientes, ver [FirmaSolicitud.esOrdenPago].
+const tipoOrdenPago = 'OP';
+
+/// Código de `firmas_documentos_tipo` para una diferencia de peso detectada
+/// al recibir una OC (ver `recepcion_diferencia_peso_service.py`) — tercer
+/// tipo con vista propia, ver [FirmaSolicitud.esDiferenciaPeso].
+const tipoDiferenciaPeso = 'OC_DIFERENCIA_PESO';
+
+/// Código de `firmas_documentos_tipo` para una excepción de cantidad
+/// detectada al recibir una OC (ver `recepcion_oc_actualizacion_service.py`)
+/// — cuarto tipo con vista propia, ver [FirmaSolicitud.esExcesoCantidad].
+const tipoExcesoCantidad = 'OC_EXCESO_CANTIDAD';
+
 /// Espejo de una fila de `firmas_solicitudes` (ver `_base_select` en
 /// `firmas_solicitudes.py`). Esta app solo consume el flujo de resolución
 /// (ver/aprobar/rechazar) — crear solicitudes, tipos de documento y reglas
@@ -86,6 +113,16 @@ class FirmaSolicitud {
   final bool puedeFirmarYo;
 
   bool get pendiente => estado == 'PENDIENTE';
+
+  bool get esPedidoEntrega => documentoTipoCodigo == tipoPedidoEntrega;
+
+  bool get esOrdenCompra => documentoTipoCodigo == tipoOrdenCompra;
+
+  bool get esOrdenPago => documentoTipoCodigo == tipoOrdenPago;
+
+  bool get esDiferenciaPeso => documentoTipoCodigo == tipoDiferenciaPeso;
+
+  bool get esExcesoCantidad => documentoTipoCodigo == tipoExcesoCantidad;
 
   String get titulo => documentoCodigo ?? '$documentoTipoNombre #$idDocumento';
 

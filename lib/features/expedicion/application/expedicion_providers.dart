@@ -27,3 +27,10 @@ final subpedidosEnCargaProvider = FutureProvider.autoDispose<List<SubpedidoEnCar
 final detalleCargaProvider = FutureProvider.autoDispose.family<DetalleCarga, int>((ref, idPedidoSubpedido) {
   return ref.watch(expedicionRepositoryProvider).detalle(idPedidoSubpedido);
 });
+
+/// Devoluciones PENDIENTE de un subpedido EN_CARGA (Ventas redujo/quitó por
+/// Excel algo que ya se había escaneado) — se invalida manualmente tras
+/// confirmar una, mismo criterio que `detalleCargaProvider`.
+final devolucionesCargaProvider = FutureProvider.autoDispose.family<List<DevolucionCarga>, int>((ref, idPedidoSubpedido) {
+  return ref.watch(expedicionRepositoryProvider).devoluciones(idPedidoSubpedido);
+});

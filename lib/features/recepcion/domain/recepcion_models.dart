@@ -385,3 +385,27 @@ class UbicacionSimple {
   final int? idZona;
   final int? idAlmacen;
 }
+
+/// Fila de `GET /ubicaciones/zonas` (ver `ubicacion_zona.py`) — catálogo de
+/// zonas, usado por el buscador/escáner genérico ("escanear zona") para
+/// resolver un código de zona al paso previo de `UbicacionSimple`.
+class ZonaSimple {
+  ZonaSimple({
+    required this.idZona,
+    required this.nombre,
+    this.codigo,
+    this.idAlmacen,
+  });
+
+  factory ZonaSimple.fromJson(Map<String, dynamic> j) => ZonaSimple(
+    idZona: j['id_zona'] as int,
+    nombre: j['nombre'] as String? ?? '',
+    codigo: j['codigo'] as String?,
+    idAlmacen: j['id_almacen'] as int?,
+  );
+
+  final int idZona;
+  final String nombre;
+  final String? codigo;
+  final int? idAlmacen;
+}

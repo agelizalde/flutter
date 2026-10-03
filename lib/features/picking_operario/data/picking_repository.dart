@@ -13,6 +13,11 @@ class PickingRepository {
 
   Future<MisTareasResponse> misTareas() => _api.misTareas();
 
+  Future<PickingConfig> config({required int idPedidoSubpedido}) =>
+      _api.config(idPedidoSubpedido: idPedidoSubpedido);
+
+  Future<bool> appHabilitado() => _api.appHabilitado();
+
   Future<int> iniciarZona({required int idPedidoSubpedido, required int idZona}) =>
       _api.iniciarZona(idPedidoSubpedido: idPedidoSubpedido, idZona: idZona);
 
@@ -34,10 +39,43 @@ class PickingRepository {
     required int idStockReservaDetalle,
     required int idSesion,
     required double cantidadPickeada,
+    String? codigoBarra,
   }) => _api.completarTarea(
     idStockReservaDetalle: idStockReservaDetalle,
-    payload: CompletarTareaIn(idSesion: idSesion, cantidadPickeada: cantidadPickeada),
+    payload: CompletarTareaIn(idSesion: idSesion, cantidadPickeada: cantidadPickeada, codigoBarra: codigoBarra),
   );
+
+  Future<CancelarTareaResultado> cancelarTarea({
+    required int idStockReservaDetalle,
+    String? supervisorEmail,
+    String? supervisorPassword,
+    String? motivo,
+  }) => _api.cancelarTarea(
+    idStockReservaDetalle: idStockReservaDetalle,
+    supervisorEmail: supervisorEmail,
+    supervisorPassword: supervisorPassword,
+    motivo: motivo,
+  );
+
+  Future<ModificarCantidadResultado> modificarCantidad({
+    required int idStockReservaDetalle,
+    required double nuevaCantidad,
+    String? supervisorEmail,
+    String? supervisorPassword,
+  }) => _api.modificarCantidad(
+    idStockReservaDetalle: idStockReservaDetalle,
+    nuevaCantidad: nuevaCantidad,
+    supervisorEmail: supervisorEmail,
+    supervisorPassword: supervisorPassword,
+  );
+
+  Future<CajonItemsResponse> cajonItems(int idContenedor) => _api.cajonItems(idContenedor);
+
+  Future<DevolverItemResultado> devolverItem({
+    required int idPickingItem,
+    required double cantidadDevolver,
+    String? motivo,
+  }) => _api.devolverItem(idPickingItem: idPickingItem, cantidadDevolver: cantidadDevolver, motivo: motivo);
 
   Future<List<TareaDespickeo>> misTareasDespickeo() => _api.misTareasDespickeo();
 

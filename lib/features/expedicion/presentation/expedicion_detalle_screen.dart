@@ -6,6 +6,7 @@ import '../../../core/errors/app_exception.dart';
 import '../../../core/widgets/barcode_scanner_screen.dart';
 import '../application/expedicion_providers.dart';
 import '../domain/expedicion_models.dart';
+import 'widgets/devolucion_carga_tile.dart';
 
 /// Checklist de carga de un subpedido `EN_CARGA`: en modo ESCANEO, escanear
 /// un cajón (o el código de barra de un producto suelto) descuenta stock al
@@ -82,6 +83,7 @@ class _ExpedicionDetalleScreenState extends ConsumerState<ExpedicionDetalleScree
   @override
   Widget build(BuildContext context) {
     final async = ref.watch(detalleCargaProvider(widget.idPedidoSubpedido));
+    final devoluciones = ref.watch(devolucionesCargaProvider(widget.idPedidoSubpedido)).value ?? const [];
 
     return Scaffold(
       appBar: AppBar(title: const Text('Carga de camión')),
@@ -138,6 +140,23 @@ class _ExpedicionDetalleScreenState extends ConsumerState<ExpedicionDetalleScree
                         ),
                       ],
                     ),
+                    if (devoluciones.isNotEmpty) ...[
+                      const SizedBox(height: 18),
+                      const Text(
+                        'DEVOLUCIONES PENDIENTES',
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.muted, letterSpacing: 1),
+                      ),
+                      const SizedBox(height: 4),
+                      const Text(
+                        'Ventas modificó el pedido — retirá esto del camión y confirmá.',
+                        style: TextStyle(fontSize: 12, color: AppColors.muted),
+                      ),
+                      const SizedBox(height: 8),
+                      ...devoluciones.map((d) => Padding(
+                            padding: const EdgeInsets.only(bottom: 10),
+                            child: DevolucionCargaTile(idPedidoSubpedido: widget.idPedidoSubpedido, devolucion: d),
+                          )),
+                    ],
                     const SizedBox(height: 18),
                     Row(
                       children: [

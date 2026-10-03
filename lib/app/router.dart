@@ -7,6 +7,7 @@ import '../core/widgets/debug_screen_tag.dart';
 import '../core/widgets/wherehouse_bottom_nav.dart';
 import '../features/escaner/presentation/buscador_screen.dart';
 import '../features/notificaciones/presentation/notificaciones_screen.dart';
+import '../features/home/presentation/configuracion_screen.dart';
 import '../features/home/presentation/perfil_screen.dart';
 import '../features/pedidos/domain/pedido_models.dart' show SubpedidoResumen;
 import '../features/pedidos/presentation/pedido_info_screen.dart';
@@ -19,11 +20,13 @@ import '../features/ajuste_stock/presentation/merma_rapida_screen.dart';
 import '../features/ajuste_stock/presentation/nuevo_ajuste_screen.dart';
 import '../features/ajuste_stock_solicitudes/presentation/mis_solicitudes_screen.dart';
 import '../features/ajuste_stock_solicitudes/presentation/solicitar_control_screen.dart';
+import '../core/network/conexion_estado.dart';
 import '../features/auth/application/auth_controller.dart';
 import '../features/auth/presentation/blocked_user_screen.dart';
 import '../features/auth/presentation/cambiar_password_screen.dart';
 import '../features/auth/presentation/configurar_servidor_screen.dart';
 import '../features/auth/presentation/login_screen.dart';
+import '../features/auth/presentation/sin_conexion_screen.dart';
 import '../features/creador/presentation/creador_home_screen.dart';
 import '../features/home/presentation/home_screen.dart';
 import '../features/entrega/presentation/entrega_home_screen.dart';
@@ -43,7 +46,9 @@ import '../features/picking_operario/presentation/zona_selector_screen.dart';
 import '../features/produccion/presentation/configurar_impresora_screen.dart';
 import '../features/produccion/presentation/etiquetas_screen.dart';
 import '../features/produccion/presentation/finalizar_orden_screen.dart';
+import '../features/produccion/presentation/mis_producciones_screen.dart';
 import '../features/produccion/presentation/nueva_orden_screen.dart';
+import '../features/produccion/presentation/orden_detalle_screen.dart';
 import '../features/produccion/presentation/orden_en_curso_screen.dart';
 import '../features/produccion/presentation/produccion_home_screen.dart';
 import '../features/recepcion/presentation/agregar_item_screen.dart';
@@ -53,6 +58,7 @@ import '../features/recepcion/presentation/recepcion_detalle_screen.dart';
 import '../features/recepcion/presentation/recepcion_historial_screen.dart';
 import '../features/recepcion/presentation/recepcion_home_screen.dart';
 import '../features/recepcion/presentation/oc_info_screen.dart';
+import '../features/recepcion/presentation/oc_pendientes_screen.dart';
 import '../features/recepcion/presentation/recibir_oc_inicio_screen.dart';
 import '../features/recepcion/presentation/recibir_oc_items_screen.dart';
 import '../features/recepcion/presentation/recibir_oc_listado_screen.dart';
@@ -60,10 +66,13 @@ import '../features/stock/presentation/producto_detalle_screen.dart';
 import '../features/stock/presentation/proveedor_productos_screen.dart';
 import '../features/stock/presentation/stock_search_screen.dart';
 import '../features/stock/presentation/ubicacion_productos_screen.dart';
+import '../features/stock/presentation/zona_ubicaciones_screen.dart';
 import '../features/traslados/domain/traslado_models.dart' show AlertaReacomodo;
 import '../features/traslados/presentation/ejecutar_traslado_screen.dart';
 import '../features/traslados/presentation/traslado_detalle_screen.dart';
 import '../features/traslados/presentation/traslados_home_screen.dart';
+import '../features/vehiculos/presentation/vehiculo_detalle_screen.dart';
+import '../features/vehiculos/presentation/vehiculos_home_screen.dart';
 
 /// Notifica a go_router cuando cambia el estado de auth, sin recrear el
 /// [GoRouter] entero (recrearlo en cada cambio reiniciaría la navegación
@@ -80,8 +89,23 @@ final routerProvider = Provider<GoRouter>((ref) {
 
   return GoRouter(
     initialLocation: '/',
-    refreshListenable: authListenable,
+    // `ConexionEstado.sinConexion` es un `ValueNotifier` (ya `Listenable`)
+    // — combinado acá, un cambio de conectividad dispara `redirect` igual
+    // que un login/logout, sin necesidad de que el usuario navegue solo.
+    refreshListenable: Listenable.merge([authListenable, ConexionEstado.sinConexion]),
     redirect: (context, state) {
+      final vaAConfigurarServidor = state.matchedLocation == '/configurar-servidor';
+      final vaASinConexion = state.matchedLocation == '/sin-conexion';
+
+      // Sin conexión con NINGÚN servidor: pasa por encima de todo lo demás
+      // (auth incluido — no tiene sentido resolver sesión sin poder
+      // consultar `/auth/me`) salvo las dos rutas que necesita para
+      // salir del pozo: la pantalla misma y "Configurar servidor".
+      if (ConexionEstado.sinConexion.value) {
+        if (!vaASinConexion && !vaAConfigurarServidor) return '/sin-conexion';
+        return null;
+      }
+
       final authState = ref.read(authControllerProvider);
       if (authState.isLoading) return null;
 
@@ -90,9 +114,13 @@ final routerProvider = Provider<GoRouter>((ref) {
       final estaBloqueado = usuario?.bloqueadoErp ?? false;
       final vaALogin = state.matchedLocation == '/login';
       final vaABloqueado = state.matchedLocation == '/blocked';
-      // Sin sesión: tiene que poder llegar acá también, para arreglar la IP
-      // del servidor si es justo eso lo que le está impidiendo loguearse.
-      final vaAConfigurarServidor = state.matchedLocation == '/configurar-servidor';
+
+      // Se recuperó la conexión estando en /sin-conexion: mandar a donde
+      // corresponda según el estado de sesión, no dejarlo varado ahí.
+      if (vaASinConexion) {
+        if (!estaLogueado) return '/login';
+        return estaBloqueado ? '/blocked' : '/';
+      }
 
       if (!estaLogueado && !vaALogin && !vaAConfigurarServidor) return '/login';
       if (estaLogueado && estaBloqueado && !vaABloqueado) return '/blocked';
@@ -109,6 +137,11 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/blocked',
         builder: (context, state) =>
             const DebugScreenTag(label: 'Bloqueado', child: BlockedUserScreen()),
+      ),
+      GoRoute(
+        path: '/sin-conexion',
+        builder: (context, state) =>
+            const DebugScreenTag(label: 'Sin conexión', child: SinConexionScreen()),
       ),
       GoRoute(
         path: '/configurar-servidor',
@@ -185,6 +218,16 @@ final routerProvider = Provider<GoRouter>((ref) {
         ),
       ),
       GoRoute(
+        path: '/stock/zona/:id',
+        builder: (context, state) => DebugScreenTag(
+          label: 'Stock · Ubicaciones de zona',
+          child: ZonaUbicacionesScreen(
+            idZona: int.parse(state.pathParameters['id']!),
+            nombreZona: state.extra as String?,
+          ),
+        ),
+      ),
+      GoRoute(
         path: '/stock/proveedor/:id',
         builder: (context, state) => DebugScreenTag(
           label: 'Stock · Productos de proveedor',
@@ -223,6 +266,14 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/recepcion/oc/inicio',
         builder: (context, state) =>
             const DebugScreenTag(label: 'Recepción · Recibir OC', child: RecibirOcInicioScreen()),
+      ),
+      // Se llega acá desde el menú ⚙️ de RecepcionHomeScreen ("Ver OC
+      // pendientes") — listado de solo lectura, cada fila abre
+      // `/recepcion/oc/info/:id` (OcInfoScreen) para ver los ítems.
+      GoRoute(
+        path: '/recepcion/oc/pendientes',
+        builder: (context, state) =>
+            const DebugScreenTag(label: 'Recepción · OC pendientes', child: OcPendientesScreen()),
       ),
       GoRoute(
         path: '/recepcion/oc/proveedor/:idProveedor',
@@ -387,6 +438,18 @@ final routerProvider = Provider<GoRouter>((ref) {
             const DebugScreenTag(label: 'Producción · Inicio', child: ProduccionHomeScreen()),
       ),
       GoRoute(
+        path: '/produccion/mis-producciones',
+        builder: (context, state) =>
+            const DebugScreenTag(label: 'Producción · Mis producciones', child: MisProduccionesScreen()),
+      ),
+      GoRoute(
+        path: '/produccion/ordenes/:id',
+        builder: (context, state) => DebugScreenTag(
+          label: 'Producción · Detalle',
+          child: OrdenDetalleScreen(idOrden: int.parse(state.pathParameters['id']!)),
+        ),
+      ),
+      GoRoute(
         path: '/produccion/nueva/:idReceta',
         builder: (context, state) => DebugScreenTag(
           label: 'Producción · Nueva',
@@ -463,8 +526,10 @@ final routerProvider = Provider<GoRouter>((ref) {
             label: 'Pedidos · Ítems de subpedido',
             child: SubpedidoItemsScreen(
               idPedidoSubpedido: int.parse(state.pathParameters['id']!),
+              idPedido: resumen?.idPedido,
               tipoNombre: resumen?.tipoNombre,
               estadoSubpedido: resumen?.estado,
+              rowVersion: resumen?.rowVersion,
             ),
           );
         },
@@ -475,11 +540,28 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/escaner',
         builder: (context, state) => const DebugScreenTag(label: 'Buscar', child: BuscadorScreen()),
       ),
-      // Vive fuera del bottom nav (se llega desde el tab Perfil).
+      // Viven fuera del bottom nav (se llega desde el tab Perfil).
+      GoRoute(
+        path: '/configuracion',
+        builder: (context, state) =>
+            const DebugScreenTag(label: 'Configuración', child: ConfiguracionScreen()),
+      ),
       GoRoute(
         path: '/cambiar-password',
         builder: (context, state) =>
             const DebugScreenTag(label: 'Actualizar contraseña', child: CambiarPasswordScreen()),
+      ),
+      GoRoute(
+        path: '/vehiculos',
+        builder: (context, state) =>
+            const DebugScreenTag(label: 'Mantenimiento · Vehículos', child: VehiculosHomeScreen()),
+      ),
+      GoRoute(
+        path: '/vehiculos/:id',
+        builder: (context, state) => DebugScreenTag(
+          label: 'Mantenimiento · Detalle vehículo',
+          child: VehiculoDetalleScreen(idVehiculo: int.parse(state.pathParameters['id']!)),
+        ),
       ),
       GoRoute(
         path: '/firmas',

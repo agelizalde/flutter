@@ -6,6 +6,12 @@
     <uses-permission android:name="android.permission.CAMERA"/>
     <uses-feature android:name="android.hardware.camera" android:required="false"/>
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false"/>
+    <!-- Auto-actualización (feature "actualizacion"): permite pedirle al
+         sistema que instale el .apk que la app se descarga sola desde
+         /ajustes/sistema/app-android. Sin esto Android bloquea el intent de
+         instalación aunque el usuario ya haya habilitado "instalar apps
+         desconocidas" para esta app. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
     <application
         android:label="RS - WH"
         android:name="${applicationName}"
@@ -48,6 +54,13 @@
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
+        </intent>
+        <!-- Necesario en Android 11+ (package visibility) para que el intent
+             que abre open_filex resuelva el instalador de paquetes del
+             sistema al tocar "Actualizar ahora". -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:mimeType="application/vnd.android.package-archive"/>
         </intent>
     </queries>
 </manifest>

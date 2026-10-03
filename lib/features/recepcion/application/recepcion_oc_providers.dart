@@ -17,6 +17,18 @@ final recepcionOcAprobadasProvider =
       );
 });
 
+/// Todas las OC aprobadas con saldo pendiente en el almacén base del
+/// usuario, sin acotar a un proveedor — alimenta la pantalla "OC
+/// pendientes" (menú ⚙️ de Recepción-inicio), que muestra de un vistazo
+/// qué queda por recibir y cuándo.
+final recepcionOcPendientesTodasProvider =
+    FutureProvider.autoDispose<List<OrdenCompraSimple>>((ref) async {
+  final usuario = await ref.watch(authControllerProvider.future);
+  return ref.watch(recepcionRepositoryProvider).listarOcAprobadas(
+        idAlmacen: usuario?.idAlmacenSeleccionado,
+      );
+});
+
 /// Header + ítems pendientes de la OC elegida (por escaneo o por
 /// selección), lo que necesita la pantalla de tarjetas de ítems.
 final recepcionOcDetalleProvider =

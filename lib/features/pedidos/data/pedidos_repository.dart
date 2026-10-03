@@ -31,6 +31,8 @@ class PedidosRepository {
     int? idLugarEntrega,
     DateTime? eta,
     int? idVehiculoEntrega,
+    bool requierePgn = false,
+    bool requiereAduana = false,
   }) => _pedidosApi.crear(
     codigoPedido: codigoPedido,
     idCliente: idCliente,
@@ -39,10 +41,17 @@ class PedidosRepository {
     idLugarEntrega: idLugarEntrega,
     eta: eta,
     idVehiculoEntrega: idVehiculoEntrega,
+    requierePgn: requierePgn,
+    requiereAduana: requiereAduana,
   );
 
-  Future<List<ClienteSimple>> clientesListar({String? q}) =>
-      _pedidosApi.clientesListar(q: q);
+  Future<PedidosConfigCreacion> configCreacion() =>
+      _pedidosApi.configCreacion();
+
+  Future<List<ClienteSimple>> clientesListar({
+    String? q,
+    bool excluirOcasionales = false,
+  }) => _pedidosApi.clientesListar(q: q, excluirOcasionales: excluirOcasionales);
 
   Future<List<SucursalSimple>> sucursalesDeCliente(int idCliente) =>
       _pedidosApi.sucursalesDeCliente(idCliente);
@@ -52,4 +61,53 @@ class PedidosRepository {
 
   Future<List<VehiculoEntregaSimple>> vehiculosListar({String? q}) =>
       _pedidosApi.vehiculosListar(q: q);
+
+  Future<List<PedidoEstandarResumen>> estandaresDeCliente(
+    int idCliente, {
+    String? q,
+  }) => _pedidosApi.estandaresDeCliente(idCliente, q: q);
+
+  Future<EstandarAplicarResultado> aplicarEstandar({
+    required int idPedidoEstandar,
+    required int idPedido,
+  }) => _pedidosApi.aplicarEstandar(
+    idPedidoEstandar: idPedidoEstandar,
+    idPedido: idPedido,
+  );
+
+  Future<PedidoDetalle> patch({
+    required int idPedido,
+    required int expectedVersion,
+    required Map<String, dynamic> patch,
+  }) => _pedidosApi.patch(
+    idPedido: idPedido,
+    expectedVersion: expectedVersion,
+    patch: patch,
+  );
+
+  Future<PedidoAnularResultado> anular({
+    required int idPedido,
+    required int expectedVersion,
+    String? observacion,
+  }) => _pedidosApi.anular(
+    idPedido: idPedido,
+    expectedVersion: expectedVersion,
+    observacion: observacion,
+  );
+
+  Future<SubpedidoConfirmarResultado> confirmarSubpedido({
+    required int idPedidoSubpedido,
+    required int expectedVersion,
+  }) => _pedidosApi.confirmarSubpedido(
+    idPedidoSubpedido: idPedidoSubpedido,
+    expectedVersion: expectedVersion,
+  );
+
+  Future<void> aplicarDecisionEsperar({
+    required int idPedidoSubpedido,
+    required List<int> idsItems,
+  }) => _pedidosApi.aplicarDecisionEsperar(
+    idPedidoSubpedido: idPedidoSubpedido,
+    idsItems: idsItems,
+  );
 }

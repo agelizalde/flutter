@@ -4,19 +4,29 @@ import 'package:go_router/go_router.dart';
 
 import '../../../app/theme.dart';
 import '../../../core/auth/usuario_actual.dart';
+import '../../../core/config/env.dart';
 import '../../../core/widgets/barcode_scanner_screen.dart';
 import '../../../core/errors/app_exception.dart';
 import '../../auth/application/auth_controller.dart';
 import '../../escaner/application/escaner_providers.dart';
 import '../../escaner/presentation/resolver_navegacion.dart';
 import '../../notificaciones/application/notificaciones_providers.dart';
+import '../../picking_operario/application/picking_providers.dart';
 import '../../pos/application/pos_providers.dart';
 import '../../recepcion/application/recepcion_providers.dart';
 import '../application/home_providers.dart';
 import 'widgets/tarea_pendiente_card.dart';
 
 class _ModuloDeposito {
-  const _ModuloDeposito(this.titulo, this.descripcion, this.icono, this.ruta, this.color, this.permiso);
+  const _ModuloDeposito(
+    this.titulo,
+    this.descripcion,
+    this.icono,
+    this.ruta,
+    this.color,
+    this.permiso, {
+    this.requiereRedInterna = true,
+  });
 
   final String titulo;
   final String descripcion;
@@ -31,6 +41,13 @@ class _ModuloDeposito {
   /// de `RolDetallePage.jsx` (web) — ver
   /// `back-app/endpoints/modules/ajustes/usuarios/migracion_permisos_app_accesos.sql`.
   final String permiso;
+
+  /// false solo para los módulos cuyos endpoints están en el allowlist de
+  /// `public.riversupply.com.py` (Pedidos, Entrega y OC simples, ver
+  /// `nginx.conf`) — el resto da 404 seguro fuera de la red de la empresa,
+  /// así que no tiene sentido ni mostrar la tarjeta. Ver
+  /// `Env.usandoAccesoPublico`.
+  final bool requiereRedInterna;
 }
 
 /// "Accesos rápidos" — todos los módulos del depósito en una sola grilla,
@@ -44,14 +61,23 @@ const _modulosBase = [
   _ModuloDeposito('Recepción', 'Recibir mercadería', Icons.move_to_inbox_outlined, '/recepcion', Color(0xFF16A34A), 'app.recepcion.ver'),
   _ModuloDeposito('Traslados', 'Mover entre ubicaciones', Icons.swap_horiz_outlined, '/traslados', Color(0xFF7C3AED), 'app.traslados.ver'),
   _ModuloDeposito('Ajuste de stock', 'Ajustar o solicitar ajuste', Icons.rule_outlined, '/ajuste-stock', Color(0xFF475569), 'app.ajuste_stock.ver'),
+  // Gateado además por `pickingAppHabilitadoProvider` en `_modulosPara`
+  // (no alcanza con `app.picking.ver`: además hace falta que "Habilitar
+  // picking app" esté prendido en Ajustes → Operaciones → Picking → APP -
+  // Picking para el almacén base del usuario — kill switch independiente
+  // de los permisos de rol).
   _ModuloDeposito('Picking', 'Preparar pedidos', Icons.shopping_basket_outlined, '/picking-operario', Color(0xFF0EA5E9), 'app.picking.ver'),
   _ModuloDeposito('Producción', 'Órdenes y partes', Icons.precision_manufacturing_outlined, '/produccion', Color(0xFFEA580C), 'app.produccion.ver'),
   _ModuloDeposito('Cargar camión', 'Cargar cajones al camión', Icons.local_shipping_outlined, '/expedicion', Color(0xFFDC2626), 'app.expedicion.ver'),
-  _ModuloDeposito('Entregar pedido', 'Confirmar entrega al cliente', Icons.assignment_turned_in_outlined, '/entrega', Color(0xFF16A34A), 'app.entrega.ver'),
-  _ModuloDeposito('Pedidos', 'Ver y gestionar', Icons.receipt_long_outlined, '/pedidos', Color(0xFF4F46E5), 'app.pedidos.ver'),
+  // Entrega, Pedidos y OC simples son los únicos módulos cuyos endpoints
+  // (`/pedidos/...`, `/productos/`, `/proveedores/`, `/compras/oc/`) están
+  // en el allowlist de `public.` — ver `_ModuloDeposito.requiereRedInterna`
+  // y `nginx.conf`.
+  _ModuloDeposito('Entregar pedido', 'Confirmar entrega al cliente', Icons.assignment_turned_in_outlined, '/entrega', Color(0xFF16A34A), 'app.entrega.ver', requiereRedInterna: false),
+  _ModuloDeposito('Pedidos', 'Ver y gestionar', Icons.receipt_long_outlined, '/pedidos', Color(0xFF4F46E5), 'app.pedidos.ver', requiereRedInterna: false),
   _ModuloDeposito('Asignar pickers', 'Asignar tareas de picking', Icons.assignment_ind_outlined, '/picking-asignacion', Color(0xFFD97706), 'app.picking_asignacion.ver'),
   _ModuloDeposito('Control de calidad', 'Controlar pedidos armados', Icons.fact_check_outlined, '/picking-control', Color(0xFF0D9488), 'app.picking_control.ver'),
-  _ModuloDeposito('OC simples', 'Órdenes de compra', Icons.shopping_cart_outlined, '/oc-simple', Color(0xFFDB2777), 'app.oc_simple.ver'),
+  _ModuloDeposito('OC simples', 'Órdenes de compra', Icons.shopping_cart_outlined, '/oc-simple', Color(0xFFDB2777), 'app.oc_simple.ver', requiereRedInterna: false),
   // El módulo Creador en sí agrupa 5 permisos distintos (proveedores/
   // marcas/productos/zonas/ubicaciones) y cada pestaña adentro ya se oculta
   // sola según el permiso puntual del usuario (ver `CreadorHomeScreen`);
@@ -62,12 +88,26 @@ const _modulosBase = [
   // un punto de venta ACTIVO asignado — ver Ajustes → Puntos de venta en
   // la web).
   _ModuloDeposito('Punto de venta', 'Vender de mostrador', Icons.point_of_sale_outlined, '/pos', Color(0xFF059669), 'app.pos.ver'),
+  _ModuloDeposito('Mantenimiento', 'Vehículos y mantenimientos', Icons.build_outlined, '/vehiculos', Color(0xFF64748B), 'app.vehiculos.ver'),
 ];
 
-List<_ModuloDeposito> _modulosPara(UsuarioActual? usuario, {required bool tienePuntoVenta}) {
+List<_ModuloDeposito> _modulosPara(
+  UsuarioActual? usuario, {
+  required bool tienePuntoVenta,
+  required bool pickingAppHabilitado,
+  required bool usandoAccesoPublico,
+}) {
   return _modulosBase
       .where((m) => usuario?.tienePermiso(m.permiso) ?? false)
       .where((m) => m.ruta != '/pos' || tienePuntoVenta)
+      // "Habilitar picking app" (Ajustes -> Operaciones -> Picking -> APP -
+      // Picking): kill switch por almacén, independiente del permiso
+      // `app.picking.ver` — ver `pickingAppHabilitadoProvider`.
+      .where((m) => m.ruta != '/picking-operario' || pickingAppHabilitado)
+      // Fuera de la red de la empresa (túnel `public.`), ocultar los
+      // módulos que ni siquiera llegan al backend — ver
+      // `Env.usandoAccesoPublico` y `_ModuloDeposito.requiereRedInterna`.
+      .where((m) => !m.requiereRedInterna || !usandoAccesoPublico)
       .toList();
 }
 
@@ -86,7 +126,7 @@ class HomeScreen extends ConsumerWidget {
     final usuario = ref.watch(authControllerProvider).value;
     final primerNombre = usuario?.nombreMostrar.split(' ').first;
     final tienePuntoVenta = ref.watch(tienePuntoVentaAsignadoProvider).value ?? false;
-    final modulos = _modulosPara(usuario, tienePuntoVenta: tienePuntoVenta);
+    final pickingAppHabilitado = ref.watch(pickingAppHabilitadoProvider).value ?? false;
     final pendientes = ref.watch(pendientesHomeProvider);
     final hayNotificacionesSinLeer =
         ref.watch(misNotificacionesProvider).value?.any((n) => !n.leida) ?? false;
@@ -118,22 +158,40 @@ class HomeScreen extends ConsumerWidget {
           ),
           SliverPadding(
             padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-            sliver: SliverGrid(
-              // `mainAxisExtent` (alto fijo en px) en vez de `childAspectRatio`
-              // a propósito: el ancho de columna cambia según el dispositivo,
-              // pero el contenido de la tarjeta (ícono 52px + 1-2 líneas de
-              // texto) no — con `childAspectRatio` en una pantalla ancha la
-              // tarjeta salía altísima con medio cartón vacío abajo.
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 3,
-                mainAxisSpacing: 14,
-                crossAxisSpacing: 12,
-                mainAxisExtent: 150,
-              ),
-              delegate: SliverChildBuilderDelegate(
-                (context, index) => _ModuloCard(modulo: modulos[index]),
-                childCount: modulos.length,
-              ),
+            // `ValueListenableBuilder` (no un provider más) porque
+            // `Env.usandoAccesoPublicoListenable` no es estado de Riverpod
+            // — es el mismo mecanismo "plano" que ya usa `ConexionEstado`
+            // en `app/router.dart`. Así la grilla se recalcula sola si el
+            // usuario cambia de red (erp. -> public.) en medio de la
+            // sesión, sin tener que reabrir la app.
+            sliver: ValueListenableBuilder<bool>(
+              valueListenable: Env.usandoAccesoPublicoListenable,
+              builder: (context, usandoAccesoPublico, _) {
+                final modulos = _modulosPara(
+                  usuario,
+                  tienePuntoVenta: tienePuntoVenta,
+                  pickingAppHabilitado: pickingAppHabilitado,
+                  usandoAccesoPublico: usandoAccesoPublico,
+                );
+                return SliverGrid(
+                  // `mainAxisExtent` (alto fijo en px) en vez de
+                  // `childAspectRatio` a propósito: el ancho de columna
+                  // cambia según el dispositivo, pero el contenido de la
+                  // tarjeta (ícono 52px + 1-2 líneas de texto) no — con
+                  // `childAspectRatio` en una pantalla ancha la tarjeta
+                  // salía altísima con medio cartón vacío abajo.
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 3,
+                    mainAxisSpacing: 14,
+                    crossAxisSpacing: 12,
+                    mainAxisExtent: 150,
+                  ),
+                  delegate: SliverChildBuilderDelegate(
+                    (context, index) => _ModuloCard(modulo: modulos[index]),
+                    childCount: modulos.length,
+                  ),
+                );
+              },
             ),
           ),
           SliverPadding(

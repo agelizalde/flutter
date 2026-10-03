@@ -41,13 +41,23 @@ class ProduccionRepository {
 
   Future<List<EtiquetaProduccion>> etiquetas(int idOrden) => _api.etiquetas(idOrden);
 
-  Future<List<OrdenListItem>> ordenesEnCurso({required int idAlmacen}) async {
+  /// Solo las órdenes donde el usuario es creador u operario (ver
+  /// `orden_service.py::ordenes_list`) — cada operario "retoma" lo suyo, no
+  /// lo que otro compañero dejó en curso en el mismo almacén.
+  Future<List<OrdenListItem>> ordenesEnCurso({required int idAlmacen, required int idUsuario}) async {
     final resultados = await Future.wait([
-      _api.listarOrdenes(estado: 'EN_PROCESO', idAlmacen: idAlmacen),
-      _api.listarOrdenes(estado: 'PAUSADA', idAlmacen: idAlmacen),
+      _api.listarOrdenes(estado: 'EN_PROCESO', idAlmacen: idAlmacen, idUsuario: idUsuario),
+      _api.listarOrdenes(estado: 'PAUSADA', idAlmacen: idAlmacen, idUsuario: idUsuario),
     ]);
     return [...resultados[0], ...resultados[1]];
   }
+
+  /// Historial de órdenes FINALIZADAS donde el usuario aparece como creador
+  /// u operario (ver `orden_service.py::ordenes_list`), sin filtrar por
+  /// almacén — es un historial personal de lo ya producido, no un panel de
+  /// trabajo pendiente (para eso está "Retomar" en el Home).
+  Future<List<OrdenListItem>> misProducciones({required int idUsuario, int limit = 100}) =>
+      _api.listarOrdenes(idUsuario: idUsuario, estado: 'FINALIZADA', limit: limit);
 
   Future<void> pausar({required int idOrden, required int expectedVersion}) =>
       _api.pausar(idOrden: idOrden, expectedVersion: expectedVersion);

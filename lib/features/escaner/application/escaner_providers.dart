@@ -11,6 +11,7 @@ final escanerRepositoryProvider = Provider<EscanerRepository>((ref) {
   return EscanerRepository(
     ref.watch(productosApiProvider),
     ref.watch(ubicacionesApiProvider),
+    ref.watch(zonasApiProvider),
     ref.watch(recepcionRepositoryProvider),
     ref.watch(pedidosRepositoryProvider),
     ref.watch(produccionRepositoryProvider),

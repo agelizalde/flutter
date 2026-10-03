@@ -3,14 +3,19 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../app/theme.dart';
+import '../../../core/auth/usuario_actual.dart';
+import '../../../core/widgets/settings_group.dart';
 import '../../auth/application/auth_controller.dart';
+import '../../firmas/application/firmas_providers.dart';
 import '../../recepcion/application/recepcion_providers.dart';
+import 'tarjeta_virtual_usuario.dart';
 
 /// Tab "Perfil" del bottom nav — mismo lenguaje visual que el Home (hero
 /// con gradiente + cards con sombra suave, ver `home_screen.dart`). Muestra
-/// los datos que ya trae `/auth/me` (nada nuevo al backend): identidad,
-/// almacén asignado y roles. Sigue siendo dueña de cerrar sesión (antes
-/// vivía en el menú de `WherehouseAppBar`, que se sacó al rediseñar Home).
+/// los datos que ya trae `/auth/me` (nada nuevo al backend): identidad y
+/// almacén asignado. Los roles no se muestran (no le aportan nada al
+/// usuario final) y las acciones de cuenta/app viven en `/configuracion`,
+/// no acá — este tab queda enfocado solo en identidad.
 class PerfilScreen extends ConsumerWidget {
   const PerfilScreen({super.key});
 
@@ -18,6 +23,10 @@ class PerfilScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final usuario = ref.watch(authControllerProvider).value;
     final almacenes = ref.watch(almacenesProvider).value ?? const [];
+    final tieneFirmasVer = usuario?.tienePermiso('firmas.ver') ?? false;
+    final firmasPendientesCount = tieneFirmasVer
+        ? (ref.watch(firmasPendientesProvider).value?.where((s) => s.puedeFirmarYo).length ?? 0)
+        : 0;
     String? almacenNombre;
     if (usuario != null) {
       for (final a in almacenes) {
@@ -33,96 +42,63 @@ class PerfilScreen extends ConsumerWidget {
       body: CustomScrollView(
         slivers: [
           SliverToBoxAdapter(
-            child: _PerfilHero(nombre: usuario?.nombreMostrar, almacenNombre: almacenNombre),
+            child: _PerfilHero(usuario: usuario, almacenNombre: almacenNombre),
           ),
           SliverPadding(
             padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
-            sliver: SliverToBoxAdapter(child: _SeccionTitulo('MI CUENTA')),
+            sliver: SliverToBoxAdapter(child: const SettingsSectionTitle('MI CUENTA')),
           ),
           SliverPadding(
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
             sliver: SliverToBoxAdapter(
-              child: _Card(
-                child: Column(
-                  children: [
-                    _FilaDato(icono: Icons.mail_outline, etiqueta: 'Email', valor: usuario?.email ?? '—'),
-                    if (usuario?.username != null && usuario!.username != usuario.email) ...[
-                      const Divider(height: 20, color: AppColors.border),
-                      _FilaDato(icono: Icons.badge_outlined, etiqueta: 'Usuario', valor: usuario.username!),
-                    ],
-                    const Divider(height: 20, color: AppColors.border),
-                    _FilaDato(
-                      icono: Icons.store_outlined,
-                      etiqueta: 'Almacén asignado',
-                      valor: almacenNombre ?? 'Sin asignar',
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          if (usuario != null && usuario.roles.isNotEmpty) ...[
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
-              sliver: SliverToBoxAdapter(child: _SeccionTitulo('ROLES')),
-            ),
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-              sliver: SliverToBoxAdapter(
-                child: _Card(
-                  child: Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      for (final rol in usuario.roles)
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-                          decoration: BoxDecoration(
-                            color: AppColors.accentSoft,
-                            borderRadius: BorderRadius.circular(999),
-                          ),
-                          child: Text(
-                            rol,
-                            style: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                              color: AppColors.accentDark,
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ],
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
-            sliver: SliverToBoxAdapter(
-              child: Column(
+              child: SettingsGroup(
                 children: [
-                  if (usuario?.tienePermiso('firmas.ver') ?? false) ...[
-                    _MenuTile(
-                      icono: Icons.draw_outlined,
-                      titulo: 'Firmas pendientes',
-                      onTap: () => context.push('/firmas'),
-                    ),
-                    const SizedBox(height: 10),
-                  ],
-                  _MenuTile(
-                    icono: Icons.lock_outline,
-                    titulo: 'Actualizar contraseña',
-                    onTap: () => context.push('/cambiar-password'),
-                  ),
-                  const SizedBox(height: 10),
-                  _MenuTile(
-                    icono: Icons.logout,
-                    titulo: 'Cerrar sesión',
-                    destructivo: true,
-                    onTap: () => ref.read(authControllerProvider.notifier).logout(),
+                  _FilaDato(icono: Icons.mail_outline, etiqueta: 'Email', valor: usuario?.email ?? '—'),
+                  if (usuario?.username != null && usuario!.username != usuario.email)
+                    _FilaDato(icono: Icons.badge_outlined, etiqueta: 'Usuario', valor: usuario.username!),
+                  _FilaDato(
+                    icono: Icons.store_outlined,
+                    etiqueta: 'Almacén asignado',
+                    valor: almacenNombre ?? 'Sin asignar',
                   ),
                 ],
               ),
+            ),
+          ),
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
+            sliver: SliverToBoxAdapter(
+              child: SettingsGroup(
+                children: [
+                  if (tieneFirmasVer)
+                    SettingsTile(
+                      icono: Icons.draw_outlined,
+                      titulo: 'Firmas pendientes',
+                      onTap: () => context.push('/firmas'),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (firmasPendientesCount > 0) ...[
+                            _ContadorBadge(cantidad: firmasPendientesCount),
+                            const SizedBox(width: 8),
+                          ],
+                          const Icon(Icons.chevron_right, color: AppColors.faint, size: 20),
+                        ],
+                      ),
+                    ),
+                  SettingsTile(
+                    icono: Icons.settings_outlined,
+                    titulo: 'Configuración',
+                    onTap: () => context.push('/configuracion'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
+            sliver: SliverToBoxAdapter(
+              child: _CerrarSesionButton(onTap: () => ref.read(authControllerProvider.notifier).logout()),
             ),
           ),
         ],
@@ -143,13 +119,14 @@ String _iniciales(String? nombre) {
 }
 
 class _PerfilHero extends StatelessWidget {
-  const _PerfilHero({required this.nombre, required this.almacenNombre});
+  const _PerfilHero({required this.usuario, required this.almacenNombre});
 
-  final String? nombre;
+  final UsuarioActual? usuario;
   final String? almacenNombre;
 
   @override
   Widget build(BuildContext context) {
+    final nombre = usuario?.nombreMostrar;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 28),
@@ -166,14 +143,45 @@ class _PerfilHero extends StatelessWidget {
         child: Column(
           children: [
             const SizedBox(height: 8),
-            Container(
-              width: 72,
-              height: 72,
-              decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.12), shape: BoxShape.circle),
-              alignment: Alignment.center,
-              child: Text(
-                _iniciales(nombre),
-                style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: Colors.white),
+            Material(
+              color: Colors.transparent,
+              shape: const CircleBorder(),
+              clipBehavior: Clip.antiAlias,
+              child: InkWell(
+                onTap: usuario == null ? null : () => mostrarTarjetaVirtual(context, usuario!),
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    Container(
+                      width: 76,
+                      height: 76,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.12),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white.withValues(alpha: 0.18), width: 1.5),
+                      ),
+                      alignment: Alignment.center,
+                      child: Text(
+                        _iniciales(nombre),
+                        style: const TextStyle(fontSize: 25, fontWeight: FontWeight.w800, color: Colors.white),
+                      ),
+                    ),
+                    if (usuario != null)
+                      Positioned(
+                        bottom: -2,
+                        right: -2,
+                        child: Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            color: AppColors.accent,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: AppColors.heroEnd, width: 2),
+                          ),
+                          child: const Icon(Icons.qr_code_2, size: 12, color: Colors.white),
+                        ),
+                      ),
+                  ],
+                ),
               ),
             ),
             const SizedBox(height: 14),
@@ -183,8 +191,22 @@ class _PerfilHero extends StatelessWidget {
               textAlign: TextAlign.center,
             ),
             if (almacenNombre != null) ...[
-              const SizedBox(height: 4),
-              Text(almacenNombre!, style: const TextStyle(fontSize: 13, color: Color(0xFFCBD5E1))),
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.store_outlined, size: 13, color: Color(0xFFCBD5E1)),
+                    const SizedBox(width: 6),
+                    Text(almacenNombre!, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Color(0xFFE2E8F0))),
+                  ],
+                ),
+              ),
             ],
           ],
         ),
@@ -193,38 +215,25 @@ class _PerfilHero extends StatelessWidget {
   }
 }
 
-class _SeccionTitulo extends StatelessWidget {
-  const _SeccionTitulo(this.texto);
+/// Círculo rojo con la cantidad de firmas pendientes que le tocan al usuario
+/// (`puedeFirmarYo`, ver `firmasPendientesProvider`) — 99+ para no romper el
+/// layout si se acumulan muchas.
+class _ContadorBadge extends StatelessWidget {
+  const _ContadorBadge({required this.cantidad});
 
-  final String texto;
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      texto,
-      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1.0, color: AppColors.muted),
-    );
-  }
-}
-
-class _Card extends StatelessWidget {
-  const _Card({required this.child});
-
-  final Widget child;
+  final int cantidad;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(18),
-        boxShadow: [
-          BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 14, offset: const Offset(0, 5)),
-        ],
+      constraints: const BoxConstraints(minWidth: 20, minHeight: 20),
+      padding: const EdgeInsets.symmetric(horizontal: 5),
+      decoration: const BoxDecoration(color: AppColors.prioridadUrgente, shape: BoxShape.circle),
+      alignment: Alignment.center,
+      child: Text(
+        cantidad > 99 ? '99+' : '$cantidad',
+        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.white),
       ),
-      child: child,
     );
   }
 }
@@ -238,67 +247,59 @@ class _FilaDato extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Container(
-          width: 34,
-          height: 34,
-          decoration: BoxDecoration(color: AppColors.soft, borderRadius: BorderRadius.circular(10)),
-          child: Icon(icono, size: 17, color: AppColors.muted),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(etiqueta, style: const TextStyle(fontSize: 11, color: AppColors.muted)),
-              const SizedBox(height: 1),
-              Text(
-                valor,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.text),
-              ),
-            ],
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+      child: Row(
+        children: [
+          Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(color: AppColors.soft, borderRadius: BorderRadius.circular(10)),
+            child: Icon(icono, size: 16, color: AppColors.muted),
           ),
-        ),
-      ],
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(etiqueta, style: const TextStyle(fontSize: 11.5, color: AppColors.muted)),
+                const SizedBox(height: 1),
+                Text(
+                  valor,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.text),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
 
-class _MenuTile extends StatelessWidget {
-  const _MenuTile({
-    required this.icono,
-    required this.titulo,
-    required this.onTap,
-    this.destructivo = false,
-  });
+class _CerrarSesionButton extends StatelessWidget {
+  const _CerrarSesionButton({required this.onTap});
 
-  final IconData icono;
-  final String titulo;
   final VoidCallback onTap;
-  final bool destructivo;
 
   @override
   Widget build(BuildContext context) {
-    final color = destructivo ? AppColors.erTx : AppColors.text;
     return Material(
-      color: AppColors.surface,
+      color: AppColors.erBg,
       borderRadius: BorderRadius.circular(16),
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
         onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        child: const Padding(
+          padding: EdgeInsets.symmetric(vertical: 15),
           child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(icono, size: 20, color: color),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(titulo, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: color)),
-              ),
-              Icon(Icons.chevron_right, color: destructivo ? AppColors.erTx : AppColors.faint),
+              Icon(Icons.logout, size: 18, color: AppColors.erTx),
+              SizedBox(width: 8),
+              Text('Cerrar sesión', style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700, color: AppColors.erTx)),
             ],
           ),
         ),

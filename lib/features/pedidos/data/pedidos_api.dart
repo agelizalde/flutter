@@ -91,6 +91,8 @@ class PedidosApi {
     int? idLugarEntrega,
     DateTime? eta,
     int? idVehiculoEntrega,
+    bool requierePgn = false,
+    bool requiereAduana = false,
   }) async {
     final res = await _dio.post<Map<String, dynamic>>(
       '/pedidos',
@@ -102,20 +104,48 @@ class PedidosApi {
         'id_lugar_entrega': idLugarEntrega,
         'eta': eta?.toIso8601String(),
         'id_vehiculo_entrega': idVehiculoEntrega,
+        'requiere_pgn': requierePgn,
+        'requiere_aduana': requiereAduana,
         'confirmar': true,
       },
     );
     return PedidoDetalle.fromJson(res.data!);
   }
 
+  /// Config de creación de pedidos del almacén base del usuario logueado
+  /// (ver `pedidos_config_service.py::pedidos_config_get` — el almacén se
+  /// resuelve solo del lado del servidor, no se manda acá). Requiere el
+  /// permiso `pedidos_config.ver`; si el usuario no lo tiene o la migración
+  /// todavía no corrió, la llamada falla y quien la use debe caer al
+  /// default (mismo criterio que el `.catch()` de `NuevoPedidoModal.jsx`).
+  Future<PedidosConfigCreacion> configCreacion() async {
+    final res = await _dio.get<Map<String, dynamic>>(
+      '/ventas/pedidos-config/config',
+    );
+    return PedidosConfigCreacion.fromJson(res.data!);
+  }
+
   // =========================================================
   // PICKERS DE "NUEVO PEDIDO" (ver `pedido_models.dart`)
   // =========================================================
 
-  Future<List<ClienteSimple>> clientesListar({String? q}) async {
+  /// `excluirOcasionales: true` para el picker de cliente de `NuevoPedidoSheet`
+  /// — mismo criterio que `listarClientes` en `NuevoPedidoModal.jsx`: un
+  /// cliente ocasional (ver `migracion_cliente_ocasional.sql`) no debe poder
+  /// elegirse para un pedido nuevo. El POS (`PosVentaPage.jsx`/`pos_providers.dart`,
+  /// que reusa este mismo método) sí los deja elegir — ahí es justamente el
+  /// caso de uso — por eso el default queda en `false`.
+  Future<List<ClienteSimple>> clientesListar({
+    String? q,
+    bool excluirOcasionales = false,
+  }) async {
     final res = await _dio.get<Map<String, dynamic>>(
       '/clientes',
-      queryParameters: {if (q != null && q.isNotEmpty) 'q': q, 'limit': 30},
+      queryParameters: {
+        if (q != null && q.isNotEmpty) 'q': q,
+        'limit': 30,
+        'excluir_ocasionales': excluirOcasionales,
+      },
     );
     final items = (res.data!['items'] as List).cast<Map<String, dynamic>>();
     return items.map(ClienteSimple.fromJson).toList();
@@ -147,5 +177,120 @@ class PedidosApi {
     );
     final items = (res.data!['items'] as List).cast<Map<String, dynamic>>();
     return items.map(VehiculoEntregaSimple.fromJson).toList();
+  }
+
+  // =========================================================
+  // NUEVO SUBPEDIDO DESDE ESTÁNDAR (ver `NuevoSubpedidoSheet`)
+  // =========================================================
+
+  /// Plantillas de "Pedido Estándar" activas del cliente — la app de
+  /// depósito solo permite cargar subpedidos a partir de una de estas, no
+  /// crearlos en blanco (a diferencia de `ModalNuevoSubpedido.jsx` en la
+  /// web, que también deja elegir un tipo suelto y cargar ítems a mano).
+  Future<List<PedidoEstandarResumen>> estandaresDeCliente(
+    int idCliente, {
+    String? q,
+  }) async {
+    final res = await _dio.get<Map<String, dynamic>>(
+      '/pedidos/estandar',
+      queryParameters: {
+        'id_cliente': idCliente,
+        if (q != null && q.isNotEmpty) 'q': q,
+      },
+    );
+    final items = (res.data!['items'] as List).cast<Map<String, dynamic>>();
+    return items.map(PedidoEstandarResumen.fromJson).toList();
+  }
+
+  Future<EstandarAplicarResultado> aplicarEstandar({
+    required int idPedidoEstandar,
+    required int idPedido,
+  }) async {
+    final res = await _dio.post<Map<String, dynamic>>(
+      '/pedidos/estandar/$idPedidoEstandar/aplicar',
+      data: {'id_pedido': idPedido},
+    );
+    return EstandarAplicarResultado.fromJson(res.data!);
+  }
+
+  // =========================================================
+  // MENÚ DE AJUSTES DEL PEDIDO (ver `PedidoInfoScreen`)
+  // =========================================================
+
+  /// `patch` solo puede traer claves editables según el estado del pedido
+  /// (BORRADOR/ACTIVO, ver `EDITABLE_FIELDS_*` en `pedidos_service.py`) —
+  /// acá se usa nada más para ETA (`eta`) y lugar de entrega
+  /// (`id_lugar_entrega`).
+  Future<PedidoDetalle> patch({
+    required int idPedido,
+    required int expectedVersion,
+    required Map<String, dynamic> patch,
+  }) async {
+    final res = await _dio.patch<Map<String, dynamic>>(
+      '/pedidos/$idPedido',
+      data: {'expected_version': expectedVersion, 'patch': patch},
+    );
+    return PedidoDetalle.fromJson(res.data!);
+  }
+
+  /// Anula el pedido completo: todos sus subpedidos activos pasan a
+  /// `ANULADO` y se liberan sus reservas de stock (ver `pedido_anular`).
+  Future<PedidoAnularResultado> anular({
+    required int idPedido,
+    required int expectedVersion,
+    String? observacion,
+  }) async {
+    final res = await _dio.post<Map<String, dynamic>>(
+      '/pedidos/subpedidos/pedido/$idPedido/anular',
+      data: {
+        'id_pedido': idPedido,
+        'expected_version': expectedVersion,
+        'observacion': observacion,
+      },
+    );
+    return PedidoAnularResultado.fromJson(res.data!);
+  }
+
+  // =========================================================
+  // SUBPEDIDO: CONFIRMAR (ver `SubpedidoItemsScreen`)
+  // =========================================================
+
+  /// BORRADOR → CONFIRMADO: crea las reservas de stock de todos los ítems
+  /// activos (ver `subpedido_confirmacion_service.py::subpedido_confirmar`).
+  Future<SubpedidoConfirmarResultado> confirmarSubpedido({
+    required int idPedidoSubpedido,
+    required int expectedVersion,
+  }) async {
+    final res = await _dio.post<Map<String, dynamic>>(
+      '/pedidos/subpedidos/$idPedidoSubpedido/confirmar',
+      data: {
+        'id_pedido_subpedido': idPedidoSubpedido,
+        'expected_version': expectedVersion,
+      },
+    );
+    return SubpedidoConfirmarResultado.fromJson(res.data!);
+  }
+
+  /// Marca "esperar" (`acepta_fulfillment = 0`, libera la reserva física de
+  /// picking si la hubiera) para los ítems que quedaron con cantidad
+  /// pendiente tras confirmar — ver `subpedido_aplicar_decisiones_service.py`.
+  /// La app de depósito no ofrece el picker de decisiones por ítem que tiene
+  /// la web (combinar / compra externa / eliminar); todo lo sin stock queda
+  /// en espera automática de reposición.
+  Future<void> aplicarDecisionEsperar({
+    required int idPedidoSubpedido,
+    required List<int> idsItems,
+  }) async {
+    if (idsItems.isEmpty) return;
+    await _dio.post<Map<String, dynamic>>(
+      '/pedidos/subpedidos/$idPedidoSubpedido/aplicar-decisiones',
+      data: {
+        'items': idsItems
+            .map(
+              (id) => {'id_pedido_subpedido_item': id, 'decision': 'esperar'},
+            )
+            .toList(),
+      },
+    );
   }
 }

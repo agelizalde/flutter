@@ -161,13 +161,33 @@ class _Hero extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const SizedBox(height: 8),
-            InkWell(
-              borderRadius: BorderRadius.circular(999),
-              onTap: () => Navigator.of(context).maybePop(),
-              child: const Padding(
-                padding: EdgeInsets.all(4),
-                child: Icon(Icons.arrow_back, color: Colors.white, size: 22),
-              ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                InkWell(
+                  borderRadius: BorderRadius.circular(999),
+                  onTap: () => Navigator.of(context).maybePop(),
+                  child: const Padding(
+                    padding: EdgeInsets.all(4),
+                    child: Icon(Icons.arrow_back, color: Colors.white, size: 22),
+                  ),
+                ),
+                // Menú de accesos secundarios del módulo — hoy solo "Ver OC
+                // pendientes" (semáforo de fecha estimada de entrega), pensado
+                // para crecer sin volver a apilar CTA en el body.
+                PopupMenuButton<String>(
+                  icon: const Icon(Icons.settings_outlined, color: Colors.white, size: 22),
+                  onSelected: (value) {
+                    if (value == 'oc_pendientes') context.push('/recepcion/oc/pendientes');
+                  },
+                  itemBuilder: (context) => const [
+                    PopupMenuItem(
+                      value: 'oc_pendientes',
+                      child: Text('Ver OC pendientes'),
+                    ),
+                  ],
+                ),
+              ],
             ),
             const SizedBox(height: 16),
             const Text(

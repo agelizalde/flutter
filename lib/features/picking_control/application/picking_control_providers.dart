@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/network/notificaciones_ws_provider.dart';
 import '../../../core/providers.dart';
 import '../../../core/utils/silent_refresh.dart';
 import '../data/picking_control_api.dart';
@@ -14,12 +15,30 @@ final pickingControlRepositoryProvider = Provider<PickingControlRepository>((ref
   return PickingControlRepository(ref.watch(pickingControlApiProvider));
 });
 
-/// Lista de subpedidos disponibles para controlar, refrescada cada 20s
-/// mientras la pantalla esté abierta (mismo criterio que `misTareasProvider`
-/// en Picking Operario) — así el controlador ve aparecer cajones recién
-/// cerrados sin tener que hacer pull-to-refresh a mano.
+/// Eventos del broker que corresponden a una asignación/reasignación de
+/// controlador (ver `notificar_evento_modulo("CONTROL", ...)` en
+/// `picking_control_service.py`) — mismo `tipo_entidad` que usa PICKING,
+/// así que hay que distinguir por `tipo`.
+bool _esEventoControlAsignado(Map<String, dynamic> evento) {
+  return evento['tipo_entidad'] == 'PEDIDO_SUBPEDIDO' &&
+      (evento['tipo'] == 'CONTROL_ASIGNADO' || evento['tipo'] == 'CONTROL_REASIGNADO');
+}
+
+/// Lista de subpedidos disponibles para controlar. Con `enableSilentRefresh`
+/// como red de respaldo (20s) y, además, invalidación instantánea apenas
+/// llega un evento de asignación por `notificacionesWsProvider` — así el
+/// controlador ve aparecer cajones recién asignados sin esperar el poll ni
+/// hacer pull-to-refresh a mano.
 final subpedidosControlProvider = FutureProvider.autoDispose<List<SubpedidoControl>>((ref) {
   enableSilentRefresh(ref, interval: const Duration(seconds: 20));
+
+  ref.listen(notificacionesWsProvider, (previous, next) {
+    final evento = next.value;
+    if (evento != null && _esEventoControlAsignado(evento)) {
+      ref.invalidateSelf();
+    }
+  });
+
   return ref.watch(pickingControlRepositoryProvider).subpedidos();
 });
 

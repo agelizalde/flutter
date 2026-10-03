@@ -21,4 +21,9 @@ class ExpedicionRepository {
       _api.contarLinea(idPedidoSubpedido, idLinea, delta);
 
   Future<void> completarCarga(int idPedidoSubpedido) => _api.completarCarga(idPedidoSubpedido);
+
+  Future<List<DevolucionCarga>> devoluciones(int idPedidoSubpedido) => _api.devoluciones(idPedidoSubpedido);
+
+  Future<void> confirmarDevolucion(int idPedidoSubpedido, int idDevolucion) =>
+      _api.confirmarDevolucion(idPedidoSubpedido, idDevolucion);
 }

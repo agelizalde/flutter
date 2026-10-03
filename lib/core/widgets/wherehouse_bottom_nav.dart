@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../app/theme.dart';
+import '../../features/actualizacion/application/actualizacion_providers.dart';
+import '../../features/actualizacion/presentation/actualizacion_dialog.dart';
 import '../../features/escaner/application/escaner_providers.dart';
 import '../../features/escaner/presentation/resolver_navegacion.dart';
 import '../../features/notificaciones/application/notificaciones_providers.dart';
@@ -29,6 +31,17 @@ class WherehouseShell extends ConsumerWidget {
             ?.where((n) => !n.leida)
             .length ??
         0;
+
+    // Chequeo de actualización de la app: se dispara solo (una vez por
+    // sesión, acá vive el shell post-login) cuando hay una versión más
+    // nueva que la instalada. Un error de red al chequear queda en
+    // `AsyncValue.error` y no hace nada (ver `actualizacionDisponibleProvider`).
+    ref.listen(actualizacionDisponibleProvider, (previous, next) {
+      final version = next.value;
+      if (version != null) {
+        mostrarDialogoActualizacion(context, version);
+      }
+    });
 
     return Scaffold(
       body: navigationShell,

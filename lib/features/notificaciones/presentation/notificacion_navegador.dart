@@ -13,8 +13,8 @@ import '../domain/notificacion_model.dart';
 /// Flutter se arma a mano por `tipoEntidad` (+ `tipo` cuando una misma
 /// entidad puede significar pantallas distintas, ej. `PEDIDO_SUBPEDIDO` es
 /// tanto picking como expedición asignada). Tipos sin pantalla en esta app
-/// (ej. Firmas, que es web-only) caen al fallback: se marca leída igual,
-/// pero se avisa que hay que abrirlo desde la web.
+/// caen al fallback: se marca leída igual, pero se avisa que hay que
+/// abrirlo desde la web.
 Future<void> abrirNotificacion(BuildContext context, WidgetRef ref, Notificacion n) async {
   if (!n.leida) {
     unawaited(
@@ -52,6 +52,9 @@ String? _resolverRuta(Notificacion n) {
     case 'RECEPCION':
       if (id == null) return null;
       return '/recepcion/$id';
+    case 'FIRMAS_SOLICITUD':
+      if (id == null) return null;
+      return '/firmas/$id';
     default:
       return null;
   }

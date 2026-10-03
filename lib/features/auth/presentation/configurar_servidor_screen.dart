@@ -1,21 +1,26 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../app/theme.dart';
 import '../../../core/config/env.dart';
 import '../../../core/config/servidor_config_store.dart';
+import '../application/auth_controller.dart';
 
-/// Pantalla accesible desde el login (sin sesión) para pisar la URL del
-/// backend sin recompilar el APK — ver `Env._runtimeOverride`. Pensada para
-/// cuando cambia la IP del servidor y hay varios teléfonos ya instalados: en
-/// vez de recompilar y reinstalar en cada uno, se corrige acá.
-class ConfigurarServidorScreen extends StatefulWidget {
+/// Alcanzable desde el login (sin sesión) y desde `SinConexionScreen`, para
+/// pisar la URL del backend sin recompilar el APK — ver
+/// `Env._runtimeOverride`. Pensada tanto para cuando cambia la IP del
+/// servidor (varios teléfonos ya instalados, se corrige acá en vez de
+/// reinstalar en cada uno) como para forzar un origen puntual si la
+/// auto-detección erp./public. no da con el correcto.
+class ConfigurarServidorScreen extends ConsumerStatefulWidget {
   const ConfigurarServidorScreen({super.key});
 
   @override
-  State<ConfigurarServidorScreen> createState() => _ConfigurarServidorScreenState();
+  ConsumerState<ConfigurarServidorScreen> createState() => _ConfigurarServidorScreenState();
 }
 
-class _ConfigurarServidorScreenState extends State<ConfigurarServidorScreen> {
+class _ConfigurarServidorScreenState extends ConsumerState<ConfigurarServidorScreen> {
   final _urlController = TextEditingController();
   final _store = ServidorConfigStore();
   bool _cargando = true;
@@ -67,43 +72,46 @@ class _ConfigurarServidorScreenState extends State<ConfigurarServidorScreen> {
     });
     await _store.guardar(url);
     Env.setOverrideEnMemoria(url);
-    if (!mounted) return;
-    setState(() {
-      _guardando = false;
-      _esValorGuardado = true;
-    });
-    _mostrarDialogoReinicio();
+    await _reconectarYVolver(mensajeError: 'No se pudo conectar con $url');
   }
 
   Future<void> _restablecer() async {
     setState(() => _guardando = true);
     await _store.guardar(null);
     Env.setOverrideEnMemoria(null);
-    if (!mounted) return;
-    setState(() {
-      _guardando = false;
-      _esValorGuardado = false;
-      _urlController.text = Env.apiBaseUrl;
-    });
-    _mostrarDialogoReinicio();
+    if (mounted) {
+      setState(() {
+        _esValorGuardado = false;
+        _urlController.text = Env.apiBaseUrl;
+      });
+    }
+    await _reconectarYVolver(
+      mensajeError: 'Se restableció, pero seguimos sin poder conectar',
+    );
   }
 
-  void _mostrarDialogoReinicio() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Listo'),
-        content: const Text(
-          'Se guardó la configuración. Cerrá la app por completo (no solo minimizarla) y volvé a abrirla para que tome efecto en toda la app.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Entendido'),
-          ),
-        ],
-      ),
+  /// Reemplaza al viejo "cerrá la app y volvé a abrirla": el `baseUrl` de
+  /// `DioClient` ya se relee en cada request (ver `Env.apiBaseUrl`), así
+  /// que alcanza con probar la nueva configuración ahí mismo. Si conecta,
+  /// vuelve sola a donde estaba (login, `/sin-conexion`, etc.) — el router
+  /// reacciona solo a `ConexionEstado` (ver `app/router.dart`).
+  Future<void> _reconectarYVolver({required String mensajeError}) async {
+    final conectado = await Env.reintentarConexion();
+    if (conectado) ref.invalidate(authControllerProvider);
+    if (!mounted) return;
+    setState(() => _guardando = false);
+    if (!conectado) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(mensajeError)));
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Conectado')),
     );
+    if (context.canPop()) {
+      context.pop();
+    } else {
+      context.go('/');
+    }
   }
 
   @override

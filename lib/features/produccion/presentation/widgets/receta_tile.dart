@@ -10,9 +10,9 @@ String _fmtDuracionCorta(int segundos) {
   return '${m}min';
 }
 
-/// Tarjeta de receta para elegir qué producir — insignia de nivel (tier)
-/// según cuántas veces se produjo, look "gamificado" simple sin depender de
-/// paquetes de animación.
+/// Tarjeta de receta para elegir qué producir — look plano y consistente
+/// (mismo ícono/acento de marca para todas), sin insignias de "nivel" por
+/// cuántas veces se produjo.
 class RecetaTile extends StatelessWidget {
   const RecetaTile({super.key, required this.receta, required this.onTap});
 
@@ -21,8 +21,6 @@ class RecetaTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tier = tierInfoFor(receta.vecesProducida);
-
     return Material(
       color: Colors.white,
       borderRadius: BorderRadius.circular(18),
@@ -32,9 +30,7 @@ class RecetaTile extends StatelessWidget {
         child: Container(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(18),
-            boxShadow: [
-              BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 14, offset: const Offset(0, 5)),
-            ],
+            border: Border.all(color: AppColors.border),
           ),
           padding: const EdgeInsets.all(16),
           child: Row(
@@ -43,8 +39,8 @@ class RecetaTile extends StatelessWidget {
               Container(
                 width: 46,
                 height: 46,
-                decoration: BoxDecoration(color: tier.color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(14)),
-                child: Icon(tier.icon, color: tier.color, size: 24),
+                decoration: BoxDecoration(color: AppColors.accentSoft, borderRadius: BorderRadius.circular(14)),
+                child: const Icon(Icons.receipt_long_outlined, color: AppColors.accentDark, size: 22),
               ),
               const SizedBox(width: 14),
               Expanded(
@@ -67,21 +63,21 @@ class RecetaTile extends StatelessWidget {
                     const SizedBox(height: 10),
                     Row(
                       children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                          decoration: BoxDecoration(color: tier.color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(999)),
-                          child: Text(
-                            '${tier.label} · ${receta.vecesProducida}x',
-                            style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: tier.color),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
                         const Icon(Icons.timer_outlined, size: 13, color: AppColors.faint),
-                        const SizedBox(width: 3),
+                        const SizedBox(width: 4),
                         Text(
                           _fmtDuracionCorta(receta.tiempoReferenciaSegundos),
                           style: const TextStyle(fontSize: 11.5, color: AppColors.muted, fontWeight: FontWeight.w600),
                         ),
+                        if (receta.vecesProducida > 0) ...[
+                          const SizedBox(width: 10),
+                          const Icon(Icons.circle, size: 3, color: AppColors.faint),
+                          const SizedBox(width: 10),
+                          Text(
+                            'Producida ${receta.vecesProducida}x',
+                            style: const TextStyle(fontSize: 11.5, color: AppColors.muted, fontWeight: FontWeight.w600),
+                          ),
+                        ],
                       ],
                     ),
                   ],

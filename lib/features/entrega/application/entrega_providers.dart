@@ -28,3 +28,17 @@ final subpedidosEnEntregaProvider = FutureProvider.autoDispose<List<SubpedidoEnE
 final entregaItemsProvider = FutureProvider.autoDispose.family<List<EntregaItem>, int>((ref, idPedidoSubpedido) {
   return ref.watch(entregaRepositoryProvider).entregaItems(idPedidoSubpedido);
 });
+
+/// Config de Ajustes → Operaciones → Entrega (fotos, aprobación, novedades
+/// permitidas) — se pide cada vez que se abre la pantalla de confirmar entrega,
+/// no se cachea entre aperturas.
+final entregaConfigProvider = FutureProvider.autoDispose<EntregaConfig>((ref) {
+  return ref.watch(entregaRepositoryProvider).entregaConfig();
+});
+
+/// Documento de entrega del pedido — lo consume la pantalla de detalle de
+/// Firmas para mostrar cliente/sucursal/ETA/quién entregó/etc. al resolver
+/// una solicitud `PEDIDO_ENTREGA`.
+final pedidoEntregaResumenProvider = FutureProvider.autoDispose.family<PedidoEntregaResumen, int>((ref, idPedidoSubpedido) {
+  return ref.watch(entregaRepositoryProvider).documentoEntrega(idPedidoSubpedido);
+});

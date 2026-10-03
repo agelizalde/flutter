@@ -42,4 +42,22 @@ class ExpedicionApi {
   Future<void> completarCarga(int idPedidoSubpedido) async {
     await _dio.post<Map<String, dynamic>>('/pedidos/subpedidos/$idPedidoSubpedido/carga/completar');
   }
+
+  /// Devoluciones PENDIENTE de esta carga — ver BD_CARGA_DEVOLUCION.txt.
+  Future<List<DevolucionCarga>> devoluciones(int idPedidoSubpedido) async {
+    final res = await _dio.get<Map<String, dynamic>>(
+      '/pedidos/subpedidos/$idPedidoSubpedido/carga/devoluciones',
+    );
+    return (res.data!['devoluciones'] as List? ?? [])
+        .cast<Map<String, dynamic>>()
+        .map(DevolucionCarga.fromJson)
+        .toList();
+  }
+
+  Future<void> confirmarDevolucion(int idPedidoSubpedido, int idDevolucion) async {
+    await _dio.post<Map<String, dynamic>>(
+      '/pedidos/subpedidos/$idPedidoSubpedido/carga/devoluciones/$idDevolucion/confirmar',
+      data: {},
+    );
+  }
 }

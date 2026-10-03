@@ -27,6 +27,14 @@ final pedidoSubpedidosProvider = FutureProvider.family
       return ref.watch(pedidosRepositoryProvider).subpedidosDe(idPedido);
     });
 
+/// Estándares activos del cliente de un pedido — decide si "Nuevo estándar"
+/// aparece en el menú de ajustes de `PedidoInfoScreen` (ver
+/// `NuevoSubpedidoSheet`, mismo listado que usa su picker).
+final pedidoEstandaresActivosProvider = FutureProvider.family
+    .autoDispose<List<PedidoEstandarResumen>, int>((ref, idCliente) {
+      return ref.watch(pedidosRepositoryProvider).estandaresDeCliente(idCliente);
+    });
+
 /// Ítems de un subpedido, para `SubpedidoItemsScreen` (llega al tocar un
 /// subpedido en `PedidoInfoScreen`).
 final subpedidoItemsProvider = FutureProvider.family
@@ -35,12 +43,6 @@ final subpedidoItemsProvider = FutureProvider.family
     });
 
 final pedidosBusquedaProvider = StateProvider<String>((ref) => '');
-
-/// Filtro por estado agregado en `PedidosHomeScreen` — puramente client-side
-/// (a diferencia de `q`, que sí viaja al backend): se aplica sobre el
-/// resultado ya agrupado por pedido, así que filtrar antes de agrupar
-/// rompería el cálculo del "cuello de botella" (ver `_agruparPorPedido`).
-final pedidosFiltroEstadoProvider = StateProvider<String?>((ref) => null);
 
 /// Módulo "Pedidos" (`PedidosHomeScreen`): el backend ya devuelve solo los
 /// subpedidos visibles para el permiso del usuario (ver

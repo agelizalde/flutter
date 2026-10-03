@@ -13,6 +13,7 @@ class TareaPicking {
     required this.idUnidadMedida,
     required this.unidadNombre,
     required this.unidadSimbolo,
+    required this.idUbicacion,
     required this.ubicacionCodigo,
     required this.ubicacionNombre,
     required this.zonaNombre,
@@ -25,6 +26,8 @@ class TareaPicking {
     this.contenedorIdentificador,
     this.cantidadPickeada,
     required this.pickingPorPeso,
+    required this.puedeDevolver,
+    this.codigosBarra = const [],
   });
 
   factory TareaPicking.fromJson(Map<String, dynamic> j) => TareaPicking(
@@ -37,6 +40,7 @@ class TareaPicking {
     idUnidadMedida: j['id_unidad_medida'] as int,
     unidadNombre: j['unidad_nombre'] as String? ?? '',
     unidadSimbolo: j['unidad_simbolo'] as String? ?? '',
+    idUbicacion: j['id_ubicacion'] as int,
     ubicacionCodigo: j['ubicacion_codigo'] as String? ?? '',
     ubicacionNombre: j['ubicacion_nombre'] as String? ?? '',
     zonaNombre: j['zona_nombre'] as String? ?? '',
@@ -49,6 +53,8 @@ class TareaPicking {
     contenedorIdentificador: j['contenedor_identificador'] as String?,
     cantidadPickeada: parseDoubleOrNull(j['cantidad_pickeada']),
     pickingPorPeso: j['picking_por_peso'] as bool? ?? false,
+    puedeDevolver: j['puede_devolver'] as bool? ?? true,
+    codigosBarra: (j['codigos_barra'] as List?)?.cast<String>() ?? const [],
   );
 
   final int idStockReservaDetalle;
@@ -60,6 +66,7 @@ class TareaPicking {
   final int idUnidadMedida;
   final String unidadNombre;
   final String unidadSimbolo;
+  final int idUbicacion;
   final String ubicacionCodigo;
   final String ubicacionNombre;
   final String zonaNombre;
@@ -78,6 +85,24 @@ class TareaPicking {
   /// (`unidades.pesable`) — el operario puede ingresar cualquier peso real,
   /// sin tope ni autorización de supervisor.
   final bool pickingPorPeso;
+
+  /// Igual criterio que `ItemPickeadoCajon.puedeDevolver`: una vez que el
+  /// subpedido ya tiene Control en curso o terminado, ya no se puede
+  /// devolver este ítem — ver `get_mis_tareas` en el backend.
+  final bool puedeDevolver;
+
+  /// Códigos de barra ACTIVOS de este producto (`productos_codigos_barra`,
+  /// puede haber más de uno) — se usan para "Escaneo de producto"
+  /// (Ajustes -> Operaciones -> Picking -> APP - Picking): la app compara
+  /// el código escaneado contra esta lista para dar feedback inmediato
+  /// (✓/✗) sin ida y vuelta al servidor, pero el servidor vuelve a
+  /// validarlo igual en `completar_tarea` si `escaneo_producto_obligatorio`
+  /// está prendido — esto es solo para la UX, no la fuente de verdad. Vacía
+  /// si el producto no tiene ningún código cargado (no hay nada que
+  /// escanear para él, ninguna de las dos reglas de escaneo le aplica).
+  final List<String> codigosBarra;
+
+  bool get tieneCodigoBarras => codigosBarra.isNotEmpty;
 
   bool get pendiente => estado == 'ASIGNADO' || estado == 'EN_PROCESO';
   bool get completada => estado == 'COMPLETADO';
@@ -130,6 +155,16 @@ class SubpedidoPicking {
   /// vinieron (sucursal y tipo son opcionales según el pedido).
   String get tituloDisplay {
     final partes = [clienteNombre, sucursalNombre, tipoSubpedido]
+        .where((p) => p != null && p.trim().isNotEmpty)
+        .toList();
+    return partes.isEmpty ? (codigoPedido ?? 'Subpedido #$idPedidoSubpedido') : partes.join(' - ');
+  }
+
+  /// "Cliente - Sucursal" — igual que [tituloDisplay] pero sin el tipo de
+  /// subpedido, para el header de `PickingTrabajoScreen` (que ya muestra el
+  /// tiempo transcurrido al lado).
+  String get clienteSucursalDisplay {
+    final partes = [clienteNombre, sucursalNombre]
         .where((p) => p != null && p.trim().isNotEmpty)
         .toList();
     return partes.isEmpty ? (codigoPedido ?? 'Subpedido #$idPedidoSubpedido') : partes.join(' - ');
@@ -486,6 +521,202 @@ class TareaDespickeo {
   final String estado;
   final String? ubicacionDestinoCodigo;
   final String? ubicacionDestinoNombre;
+}
+
+/// Config efectiva de Picking (Ajustes -> Operaciones -> Picking,
+/// `GET /picking-operario/config?id_pedido_subpedido=`) para el almacén real
+/// de un subpedido — ver `picking_config_service.py` en el backend. El
+/// servidor sigue siendo la fuente de verdad (devuelve 400 igual si se
+/// ignora); esto es solo para que la UI no ofrezca acciones que van a
+/// rechazarse (usa/no contenedor, cajón obligatorio, pickeo parcial,
+/// cancelar/modificar/devolver y si esas acciones piden credenciales de
+/// supervisor). `usaContenedor=false` es el maestro: cuando está apagado,
+/// `cajonObligatorio` siempre viene en `false` (el backend lo garantiza) y
+/// la app no debe ofrecer elegir/escanear un cajón en ningún lado.
+///
+/// `escaneoZonaObligatorio` es la ÚNICA excepción a "el servidor sigue
+/// siendo la fuente de verdad": no hay invariante persistida que audite si
+/// la zona se escaneó o se tocó, así que `ZonaSelectorScreen` es el único
+/// lugar que la exige — ver ese archivo.
+class PickingConfig {
+  const PickingConfig({
+    required this.pickingHabilitado,
+    required this.escaneoZonaObligatorio,
+    required this.ubicacionProductoHabilitada,
+    required this.escaneoUbicacionObligatorio,
+    required this.usaContenedor,
+    required this.cajonObligatorio,
+    required this.escaneoProductoHabilitado,
+    required this.escaneoProductoObligatorio,
+    required this.permitePickeoParcial,
+    required this.ajusteAutomaticoPesoHabilitado,
+    required this.permiteModificarCantidad,
+    required this.modificarCantidadRequiereSupervisor,
+    required this.permiteCancelarTarea,
+    required this.cancelarRequiereSupervisor,
+    required this.permiteDevolverItem,
+    required this.sesionIdleTimeoutMinutos,
+  });
+
+  factory PickingConfig.fromJson(Map<String, dynamic> j) => PickingConfig(
+    pickingHabilitado: j['picking_habilitado'] as bool? ?? true,
+    escaneoZonaObligatorio: j['escaneo_zona_obligatorio'] as bool? ?? false,
+    ubicacionProductoHabilitada: j['ubicacion_producto_habilitada'] as bool? ?? false,
+    escaneoUbicacionObligatorio: j['escaneo_ubicacion_obligatorio'] as bool? ?? false,
+    usaContenedor: j['usa_contenedor'] as bool? ?? true,
+    cajonObligatorio: j['cajon_obligatorio'] as bool? ?? false,
+    escaneoProductoHabilitado: j['escaneo_producto_habilitado'] as bool? ?? false,
+    escaneoProductoObligatorio: j['escaneo_producto_obligatorio'] as bool? ?? false,
+    permitePickeoParcial: j['permite_pickeo_parcial'] as bool? ?? true,
+    ajusteAutomaticoPesoHabilitado: j['ajuste_automatico_peso_habilitado'] as bool? ?? true,
+    permiteModificarCantidad: j['permite_modificar_cantidad'] as bool? ?? true,
+    modificarCantidadRequiereSupervisor: j['modificar_cantidad_requiere_supervisor'] as bool? ?? true,
+    permiteCancelarTarea: j['permite_cancelar_tarea'] as bool? ?? true,
+    cancelarRequiereSupervisor: j['cancelar_requiere_supervisor'] as bool? ?? true,
+    permiteDevolverItem: j['permite_devolver_item'] as bool? ?? true,
+    sesionIdleTimeoutMinutos: j['sesion_idle_timeout_minutos'] as int? ?? 10,
+  );
+
+  final bool pickingHabilitado;
+  final bool escaneoZonaObligatorio;
+
+  /// Maestro de [escaneoUbicacionObligatorio] — ver docstring de
+  /// `ubicacion_producto_habilitada` en picking_config_service.py.
+  final bool ubicacionProductoHabilitada;
+  final bool escaneoUbicacionObligatorio;
+  final bool usaContenedor;
+  final bool cajonObligatorio;
+
+  /// Maestro de [escaneoProductoObligatorio] — a diferencia de las demás
+  /// reglas de escaneo de esta clase, ÉSTA sí tiene invariante persistida:
+  /// el servidor vuelve a validar el código escaneado en `completar_tarea`
+  /// si `escaneoProductoObligatorio` está prendido (ver
+  /// `TareaPicking.codigosBarra`/`tieneCodigoBarras`).
+  final bool escaneoProductoHabilitado;
+  final bool escaneoProductoObligatorio;
+  final bool permitePickeoParcial;
+  final bool ajusteAutomaticoPesoHabilitado;
+  final bool permiteModificarCantidad;
+  final bool modificarCantidadRequiereSupervisor;
+  final bool permiteCancelarTarea;
+  final bool cancelarRequiereSupervisor;
+  final bool permiteDevolverItem;
+  final int sesionIdleTimeoutMinutos;
+}
+
+/// `POST /picking-operario/tarea/{id}/cancelar`.
+class CancelarTareaResultado {
+  CancelarTareaResultado({
+    required this.idStockReservaDetalle,
+    this.supervisorEmail,
+    required this.subpedidoAvanzadoAControl,
+  });
+
+  factory CancelarTareaResultado.fromJson(Map<String, dynamic> j) => CancelarTareaResultado(
+    idStockReservaDetalle: j['id_stock_reserva_detalle'] as int,
+    supervisorEmail: j['supervisor_email'] as String?,
+    subpedidoAvanzadoAControl: j['subpedido_avanzado_a_control'] as bool? ?? false,
+  );
+
+  final int idStockReservaDetalle;
+  final String? supervisorEmail;
+  final bool subpedidoAvanzadoAControl;
+}
+
+/// `POST /picking-operario/tarea/{id}/modificar-cantidad`.
+class ModificarCantidadResultado {
+  ModificarCantidadResultado({
+    required this.idStockReservaDetalle,
+    required this.cantidadAnterior,
+    required this.cantidadNueva,
+  });
+
+  factory ModificarCantidadResultado.fromJson(Map<String, dynamic> j) => ModificarCantidadResultado(
+    idStockReservaDetalle: j['id_stock_reserva_detalle'] as int,
+    cantidadAnterior: parseDouble(j['cantidad_anterior']),
+    cantidadNueva: parseDouble(j['cantidad_nueva']),
+  );
+
+  final int idStockReservaDetalle;
+  final double cantidadAnterior;
+  final double cantidadNueva;
+}
+
+/// Ítem de `GET /picking-operario/cajon/{id}/items` — a diferencia de
+/// [ItemContenedor] (solo lectura, del buscador genérico), este trae
+/// `idPickingItem`/`puedeDevolver`, necesarios para poder devolverlo.
+class ItemPickeadoCajon {
+  ItemPickeadoCajon({
+    required this.idPickingItem,
+    required this.idStockReservaDetalle,
+    required this.idProducto,
+    required this.productoNombre,
+    this.productoCodigo,
+    this.unidadSimbolo,
+    required this.cantidadPickeada,
+    required this.puedeDevolver,
+  });
+
+  factory ItemPickeadoCajon.fromJson(Map<String, dynamic> j) => ItemPickeadoCajon(
+    idPickingItem: j['id_picking_item'] as int,
+    idStockReservaDetalle: j['id_stock_reserva_detalle'] as int,
+    idProducto: j['id_producto'] as int,
+    productoNombre: j['producto_nombre'] as String? ?? '',
+    productoCodigo: j['producto_codigo'] as String?,
+    unidadSimbolo: j['unidad_simbolo'] as String?,
+    cantidadPickeada: parseDouble(j['cantidad_pickeada']),
+    puedeDevolver: j['puede_devolver'] as bool? ?? false,
+  );
+
+  final int idPickingItem;
+  final int idStockReservaDetalle;
+  final int idProducto;
+  final String productoNombre;
+  final String? productoCodigo;
+  final String? unidadSimbolo;
+  final double cantidadPickeada;
+
+  /// `false` si el subpedido ya tiene una sesión de control EN_PROCESO o
+  /// COMPLETADO — a partir de ahí devolver rompería lo que control ya
+  /// revisó (ver `tiene_control_activo` en `get_cajon_items`, backend).
+  final bool puedeDevolver;
+}
+
+/// `GET /picking-operario/cajon/{id}/items`.
+class CajonItemsResponse {
+  CajonItemsResponse({required this.idContenedor, required this.identificador, required this.items});
+
+  factory CajonItemsResponse.fromJson(Map<String, dynamic> j) => CajonItemsResponse(
+    idContenedor: j['contenedor']['id_contenedor'] as int,
+    identificador: j['contenedor']['identificador'] as String? ?? '',
+    items: (j['items'] as List? ?? [])
+        .cast<Map<String, dynamic>>()
+        .map(ItemPickeadoCajon.fromJson)
+        .toList(),
+  );
+
+  final int idContenedor;
+  final String identificador;
+  final List<ItemPickeadoCajon> items;
+}
+
+/// `POST /picking-operario/picking-item/{id}/devolver`.
+class DevolverItemResultado {
+  DevolverItemResultado({
+    required this.idPickingItem,
+    required this.cantidadDevuelta,
+    required this.cantidadMantenida,
+  });
+
+  factory DevolverItemResultado.fromJson(Map<String, dynamic> j) => DevolverItemResultado(
+    idPickingItem: j['id_picking_item'] as int,
+    cantidadDevuelta: parseDouble(j['cantidad_devuelta']),
+    cantidadMantenida: parseDouble(j['cantidad_mantenida']),
+  );
+
+  final int idPickingItem;
+  final double cantidadDevuelta;
+  final double cantidadMantenida;
 }
 
 /// `POST /picking-operario/despickeo/{id}/confirmar`.

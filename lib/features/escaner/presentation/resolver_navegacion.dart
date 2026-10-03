@@ -28,6 +28,8 @@ Future<void> resolverYNavegar(
       context.push('/stock/producto/$idProducto');
     case EscaneoUbicacion(:final idUbicacion, :final nombre):
       context.push('/stock/ubicacion/$idUbicacion', extra: nombre);
+    case EscaneoZona(:final idZona, :final nombre):
+      context.push('/stock/zona/$idZona', extra: nombre);
     case EscaneoOc(:final idOc):
       await _abrirAccionesOc(context, ref, idOc);
     case EscaneoPedido(:final idPedido):

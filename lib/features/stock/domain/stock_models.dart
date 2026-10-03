@@ -50,6 +50,12 @@ class StockResumen {
     required this.unidadSimbolo,
     this.cantidadSolicitud,
     this.cantidadQuiebre,
+    this.capacidadMaxima,
+    this.obsRecepcion,
+    this.ubicacionPreferidaNombre,
+    this.ubicacionPreferidaCodigo,
+    this.ubicacionAutomaticaNombre,
+    this.ubicacionAutomaticaCodigo,
     required this.stockTotal,
     required this.stockReservado,
     required this.stockDisponible,
@@ -60,6 +66,12 @@ class StockResumen {
     unidadSimbolo: j['unidad_simbolo'] as String? ?? '',
     cantidadSolicitud: parseDoubleOrNull(j['cantidad_solicitud']),
     cantidadQuiebre: parseDoubleOrNull(j['cantidad_quiebre']),
+    capacidadMaxima: parseDoubleOrNull(j['capacidad_maxima']),
+    obsRecepcion: j['obs_recepcion'] as String?,
+    ubicacionPreferidaNombre: j['ubicacion_preferida_nombre'] as String?,
+    ubicacionPreferidaCodigo: j['ubicacion_preferida_codigo'] as String?,
+    ubicacionAutomaticaNombre: j['ubicacion_automatica_nombre'] as String?,
+    ubicacionAutomaticaCodigo: j['ubicacion_automatica_codigo'] as String?,
     stockTotal: parseDouble(j['stock_total']),
     stockReservado: parseDouble(j['stock_reservado']),
     stockDisponible: parseDouble(j['stock_disponible']),
@@ -69,6 +81,25 @@ class StockResumen {
   final String unidadSimbolo;
   final double? cantidadSolicitud;
   final double? cantidadQuiebre;
+
+  /// `productos_almacenaje.capacidad_maxima` — tope físico del producto en
+  /// depósito (misma unidad que el stock).
+  final double? capacidadMaxima;
+
+  /// `productos_almacenaje.obs_recepcion` — texto libre para quien recibe
+  /// este producto.
+  final String? obsRecepcion;
+
+  /// Ubicación recomendada (`id_ubicacion_preferida`) — solo sugerencia,
+  /// no cambia el comportamiento de recepción.
+  final String? ubicacionPreferidaNombre;
+  final String? ubicacionPreferidaCodigo;
+
+  /// Ubicación automática (`id_ubicacion_automatica`) — si está definida,
+  /// la recepción va directo ahí en vez de la ubicación elegida/por defecto.
+  final String? ubicacionAutomaticaNombre;
+  final String? ubicacionAutomaticaCodigo;
+
   final double stockTotal;
   final double stockReservado;
   final double stockDisponible;

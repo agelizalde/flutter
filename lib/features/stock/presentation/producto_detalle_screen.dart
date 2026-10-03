@@ -52,7 +52,7 @@ class _Contenido extends StatelessWidget {
 
     return CustomScrollView(
       slivers: [
-        SliverToBoxAdapter(child: _Hero(producto: detalle.producto)),
+        SliverToBoxAdapter(child: _Hero(producto: detalle.producto, resumen: r)),
         SliverPadding(
           padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
           sliver: SliverToBoxAdapter(
@@ -138,9 +138,10 @@ class _Contenido extends StatelessWidget {
 }
 
 class _Hero extends StatelessWidget {
-  const _Hero({required this.producto});
+  const _Hero({required this.producto, required this.resumen});
 
   final ProductoDetalle producto;
+  final StockResumen resumen;
 
   @override
   Widget build(BuildContext context) {
@@ -168,13 +169,26 @@ class _Hero extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const SizedBox(height: 8),
-            InkWell(
-              borderRadius: BorderRadius.circular(999),
-              onTap: () => Navigator.of(context).maybePop(),
-              child: const Padding(
-                padding: EdgeInsets.all(4),
-                child: Icon(Icons.arrow_back, color: Colors.white, size: 22),
-              ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                InkWell(
+                  borderRadius: BorderRadius.circular(999),
+                  onTap: () => Navigator.of(context).maybePop(),
+                  child: const Padding(
+                    padding: EdgeInsets.all(4),
+                    child: Icon(Icons.arrow_back, color: Colors.white, size: 22),
+                  ),
+                ),
+                InkWell(
+                  borderRadius: BorderRadius.circular(999),
+                  onTap: () => _mostrarInfoExtra(context, resumen: resumen),
+                  child: const Padding(
+                    padding: EdgeInsets.all(4),
+                    child: Icon(Icons.settings_outlined, color: Colors.white, size: 22),
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 16),
             Row(
@@ -499,6 +513,148 @@ class _KpiBox extends StatelessWidget {
           Text(
             unidad,
             style: const TextStyle(fontSize: 11, color: AppColors.muted),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Bottom sheet con los datos de depósito que no entran en el hero:
+/// capacidad máxima, ubicación recomendada, ubicación automática y
+/// observación de recepción (`productos_almacenaje`, se configuran desde
+/// la ficha web del producto, pestaña "Depósito").
+void _mostrarInfoExtra(BuildContext context, {required StockResumen resumen}) {
+  showModalBottomSheet<void>(
+    context: context,
+    backgroundColor: Colors.transparent,
+    builder: (context) => _InfoExtraSheet(resumen: resumen),
+  );
+}
+
+class _InfoExtraSheet extends StatelessWidget {
+  const _InfoExtraSheet({required this.resumen});
+
+  final StockResumen resumen;
+
+  String? get _ubicacionRecomendada {
+    if (resumen.ubicacionPreferidaNombre == null) return null;
+    final codigo = resumen.ubicacionPreferidaCodigo;
+    return codigo != null && codigo.isNotEmpty
+        ? '$codigo — ${resumen.ubicacionPreferidaNombre}'
+        : resumen.ubicacionPreferidaNombre;
+  }
+
+  String? get _ubicacionAutomatica {
+    if (resumen.ubicacionAutomaticaNombre == null) return null;
+    final codigo = resumen.ubicacionAutomaticaCodigo;
+    return codigo != null && codigo.isNotEmpty
+        ? '$codigo — ${resumen.ubicacionAutomaticaNombre}'
+        : resumen.ubicacionAutomaticaNombre;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Container(
+        margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+        padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(24),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 14),
+                decoration: BoxDecoration(
+                  color: AppColors.border,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+            ),
+            const Text(
+              'Capacidad, ubicación y recepción',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+                color: AppColors.text,
+              ),
+            ),
+            const SizedBox(height: 16),
+            _InfoExtraFila(
+              icono: Icons.inventory_2_outlined,
+              etiqueta: 'Capacidad máxima',
+              valor: resumen.capacidadMaxima != null
+                  ? '${formatCantidad(resumen.capacidadMaxima!, pesable: true)} ${resumen.unidadSimbolo}'
+                  : null,
+            ),
+            _InfoExtraFila(
+              icono: Icons.push_pin_outlined,
+              etiqueta: 'Ubicación recomendada',
+              valor: _ubicacionRecomendada,
+            ),
+            _InfoExtraFila(
+              icono: Icons.route_outlined,
+              etiqueta: 'Ubicación automática',
+              valor: _ubicacionAutomatica,
+            ),
+            _InfoExtraFila(
+              icono: Icons.info_outline,
+              etiqueta: 'Observación de recepción',
+              valor: resumen.obsRecepcion,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _InfoExtraFila extends StatelessWidget {
+  const _InfoExtraFila({
+    required this.icono,
+    required this.etiqueta,
+    required this.valor,
+  });
+
+  final IconData icono;
+  final String etiqueta;
+  final String? valor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icono, size: 18, color: AppColors.muted),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  etiqueta,
+                  style: const TextStyle(fontSize: 11, color: AppColors.muted),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  (valor == null || valor!.isEmpty) ? 'Sin definir' : valor!,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: (valor == null || valor!.isEmpty) ? AppColors.faint : AppColors.text,
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),

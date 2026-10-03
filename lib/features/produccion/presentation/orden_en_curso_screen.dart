@@ -9,6 +9,16 @@ import '../../../core/errors/app_exception.dart';
 import '../application/produccion_providers.dart';
 import '../domain/produccion_models.dart';
 
+/// Vuelve a la lista de recetas de Producción sin dejar colgados los pasos
+/// intermedios del flujo (nueva orden, taller, finalizar) en el historial —
+/// pero primero limpia el stack hacia Home, para no dejar la pantalla de
+/// recetas sin forma de volver al menú principal (no tiene bottom nav propio,
+/// es un `GoRoute` suelto fuera del shell).
+void _irAProduccion(BuildContext context) {
+  context.go('/');
+  context.push('/produccion');
+}
+
 String _fmtReloj(int segundos) {
   var s = segundos;
   if (s < 0) s = 0;
@@ -97,7 +107,7 @@ class _OrdenEnCursoScreenState extends ConsumerState<OrdenEnCursoScreen> {
       await ref.read(produccionRepositoryProvider).anular(idOrden: orden.idOrden, expectedVersion: orden.rowVersion);
       ref.invalidate(ordenesEnCursoProvider);
       if (!mounted) return;
-      context.go('/produccion');
+      _irAProduccion(context);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(describeError(e))));
@@ -111,7 +121,21 @@ class _OrdenEnCursoScreenState extends ConsumerState<OrdenEnCursoScreen> {
     final async = ref.watch(ordenDetalleProvider(widget.idOrden));
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Producción en curso')),
+      appBar: AppBar(
+        title: const Text('Producción en curso'),
+        // Explícita en vez de dejar que Flutter la infiera: se llega acá
+        // tanto con `push` (Retomar) como con `go` (recién arrancada desde
+        // Nueva orden, que limpia el stack) y en ese segundo caso no hay a
+        // dónde hacer pop, así que no aparecía ninguna flecha. Volver nunca
+        // pausa la orden — el cronómetro vive en el backend, no en esta
+        // pantalla — así que el tiempo sigue corriendo salvo que el usuario
+        // toque "Pausar" explícitamente.
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          tooltip: 'Volver',
+          onPressed: () => _irAProduccion(context),
+        ),
+      ),
       body: async.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(
@@ -305,12 +329,12 @@ class _EstadoTerminalCartel extends StatelessWidget {
               ),
               const SizedBox(height: 10),
               TextButton(
-                onPressed: () => context.go('/produccion'),
+                onPressed: () => _irAProduccion(context),
                 child: const Text('Volver a Producción'),
               ),
             ] else
               ElevatedButton(
-                onPressed: () => context.go('/produccion'),
+                onPressed: () => _irAProduccion(context),
                 child: const Text('Volver a Producción'),
               ),
           ],

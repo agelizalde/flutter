@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'auth/auth_repository.dart';
+import 'auth/sesion_expirada.dart';
 import 'db/app_database.dart';
 import 'network/dio_client.dart';
 import 'storage/secure_storage.dart';
@@ -15,7 +16,10 @@ final secureStorageProvider = Provider<SecureStorage>((ref) {
 });
 
 final dioClientProvider = Provider<DioClient>((ref) {
-  return DioClient(ref.watch(secureStorageProvider));
+  return DioClient(
+    ref.watch(secureStorageProvider),
+    onUnauthorized: () => ref.read(sesionExpiradaProvider).add(null),
+  );
 });
 
 final appDatabaseProvider = Provider<AppDatabase>((ref) {

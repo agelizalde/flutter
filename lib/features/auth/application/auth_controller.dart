@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/auth/sesion_expirada.dart';
 import '../../../core/auth/usuario_actual.dart';
 import '../../../core/providers.dart';
 
@@ -14,6 +15,7 @@ const _intervaloRefreshSesion = Duration(seconds: 15);
 /// (se resuelve en [build] contra el token guardado).
 class AuthController extends AsyncNotifier<UsuarioActual?> {
   Timer? _refreshTimer;
+  StreamSubscription<void>? _sesionExpiradaSub;
 
   @override
   Future<UsuarioActual?> build() async {
@@ -23,6 +25,17 @@ class AuthController extends AsyncNotifier<UsuarioActual?> {
     _refreshTimer = Timer.periodic(_intervaloRefreshSesion, (_) => _refrescarSilenciosamente());
     ref.onDispose(() => _refreshTimer?.cancel());
 
+    // Cualquier request (no solo el refresh silencioso de arriba) puede
+    // toparse con un 401 — DioClient lo avisa acá para cerrar la sesión
+    // local al toque, sin esperar el próximo tick. El router reacciona solo
+    // (ver `_AuthRefreshListenable` en app/router.dart) y manda a /login.
+    _sesionExpiradaSub?.cancel();
+    _sesionExpiradaSub = ref
+        .read(sesionExpiradaProvider)
+        .stream
+        .listen((_) => _cerrarSesionPorTokenVencido());
+    ref.onDispose(() => _sesionExpiradaSub?.cancel());
+
     if (!await repo.hasSession()) return null;
     try {
       return await repo.me();
@@ -30,6 +43,17 @@ class AuthController extends AsyncNotifier<UsuarioActual?> {
       // Token guardado pero inválido/vencido: tratar como no logueado.
       return null;
     }
+  }
+
+  Future<void> _cerrarSesionPorTokenVencido() async {
+    final actual = state;
+    if (actual is AsyncData<UsuarioActual?> && actual.value == null) {
+      return; // ya estaba deslogueado, nada que hacer
+    }
+
+    final repo = ref.read(authRepositoryProvider);
+    await repo.logoutLocal();
+    state = const AsyncData(null);
   }
 
   /// Vuelve a pedir `/auth/me` y reemplaza el estado directo con
@@ -45,8 +69,10 @@ class AuthController extends AsyncNotifier<UsuarioActual?> {
       final actualizado = await repo.me();
       state = AsyncData(actualizado);
     } catch (_) {
-      // Sin conexión o token vencido: se deja el estado como está, un
-      // request real a la API va a disparar el 401 normal si corresponde.
+      // Sin conexión: se deja el estado como está. Si en cambio fue un 401
+      // (token vencido/revocado), `_cerrarSesionPorTokenVencido` ya se
+      // disparó en paralelo vía `sesionExpiradaProvider` y dejó el estado
+      // en null.
     }
   }
 

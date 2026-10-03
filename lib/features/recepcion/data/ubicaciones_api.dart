@@ -44,4 +44,49 @@ class UbicacionesApi {
     final items = (res.data!['items'] as List).cast<Map<String, dynamic>>();
     return items.map(UbicacionSimple.fromJson).toList();
   }
+
+  /// Todas las ubicaciones activas dentro de una zona — paso "escanear
+  /// zona" del buscador (ver `ZonaUbicacionesScreen`): a diferencia de
+  /// `buscar` (autocompletado, `page_size` chico) acá se necesita el
+  /// listado completo, sin filtrar por stock (una ubicación vacía también
+  /// tiene que aparecer, mismo criterio que `EscanerRepository._buscarUbicacion`).
+  Future<List<UbicacionSimple>> deZona(int idZona) async {
+    final res = await _dio.get<Map<String, dynamic>>(
+      '/ubicaciones',
+      queryParameters: {
+        'id_zona': idZona,
+        'activo': true,
+        'page': 1,
+        'page_size': 200,
+      },
+    );
+    final items = (res.data!['items'] as List).cast<Map<String, dynamic>>();
+    return items.map(UbicacionSimple.fromJson).toList();
+  }
+}
+
+/// Llamadas a `/ubicaciones/zonas` (ver `ubicacion_zona_rout.py`).
+class ZonasApi {
+  ZonasApi(this._dio);
+
+  final Dio _dio;
+
+  /// Búsqueda genérica por nombre/código/almacén — mismo criterio que
+  /// `UbicacionesApi.buscar`: `idAlmacen` es opcional porque el
+  /// buscador/escáner genérico no sabe de antemano en qué almacén está la
+  /// zona escaneada.
+  Future<List<ZonaSimple>> buscar({int? idAlmacen, String? q}) async {
+    final res = await _dio.get<Map<String, dynamic>>(
+      '/ubicaciones/zonas',
+      queryParameters: {
+        'id_almacen': ?idAlmacen,
+        if (q != null && q.isNotEmpty) 'q': q,
+        'activo': true,
+        'page': 1,
+        'page_size': 50,
+      },
+    );
+    final items = (res.data!['items'] as List).cast<Map<String, dynamic>>();
+    return items.map(ZonaSimple.fromJson).toList();
+  }
 }

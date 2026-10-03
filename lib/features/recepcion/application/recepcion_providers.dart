@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:riverpod/legacy.dart';
 
+import '../../../core/network/notificaciones_ws_provider.dart';
 import '../../../core/providers.dart';
 import '../../../core/utils/silent_refresh.dart';
 import '../../auth/application/auth_controller.dart';
@@ -26,6 +27,10 @@ final ubicacionesApiProvider = Provider<UbicacionesApi>((ref) {
   return UbicacionesApi(ref.watch(dioClientProvider).dio);
 });
 
+final zonasApiProvider = Provider<ZonasApi>((ref) {
+  return ZonasApi(ref.watch(dioClientProvider).dio);
+});
+
 final recepcionRepositoryProvider = Provider<RecepcionRepository>((ref) {
   return RecepcionRepository(
     ref.watch(recepcionesApiProvider),
@@ -43,8 +48,22 @@ final recepcionRepositoryProvider = Provider<RecepcionRepository>((ref) {
 /// llamada, así que se piden por separado y se mezclan/ordenan acá.
 /// Se invalida a mano (`ref.invalidate`) después de crear/confirmar una
 /// recepción, más simple que modelarla como `Notifier` solo para eso.
+///
+/// Piloto de tiempo real: escucha `notificacionesWsProvider` y se invalida
+/// apenas llega un evento `RECEPCION` (`RECEPCION_CONTROLADA`, cuando
+/// alguien controla una recepción que yo recibí — ver
+/// `recepcion_control_service.py`), en vez de esperar el próximo poll.
+/// `enableSilentRefresh` con intervalo largo queda como red de respaldo.
 final recepcionesRecientesProvider = FutureProvider.autoDispose<List<Recepcion>>((ref) async {
-  enableSilentRefresh(ref);
+  enableSilentRefresh(ref, interval: const Duration(seconds: 60));
+
+  ref.listen(notificacionesWsProvider, (previous, next) {
+    final evento = next.value;
+    if (evento != null && evento['tipo_entidad'] == 'RECEPCION') {
+      ref.invalidateSelf();
+    }
+  });
+
   final usuario = await ref.watch(authControllerProvider.future);
   if (usuario == null) return const [];
 
@@ -88,11 +107,29 @@ final recepcionesRecientesProvider = FutureProvider.autoDispose<List<Recepcion>>
 /// mismo recibió.
 final recepcionListadoProvider =
     FutureProvider.family.autoDispose<List<Recepcion>, (String query, String? estado)>((ref, params) async {
-  enableSilentRefresh(ref);
+  enableSilentRefresh(ref, interval: const Duration(seconds: 60));
+
+  final (query, estadoFijo) = params;
+
+  // Piloto de tiempo real, solo para la cola compartida "Pendientes de
+  // control": se invalida apenas llega un evento `RECEPCION_CONTROL`
+  // (`RECEPCION_PEND_CONTROL`, nueva recepción que necesita control — ver
+  // `recepcion_control_service.py`), así aparece al instante para
+  // cualquiera con `recepciones.controlar` en el almacén, sin esperar el
+  // próximo poll. El resto de usos de este provider (historial general,
+  // `INGRESADA`) siguen solo con el polling de respaldo.
+  if (estadoFijo == 'PEND_CONTROL') {
+    ref.listen(notificacionesWsProvider, (previous, next) {
+      final evento = next.value;
+      if (evento != null && evento['tipo_entidad'] == 'RECEPCION_CONTROL') {
+        ref.invalidateSelf();
+      }
+    });
+  }
+
   final usuario = await ref.watch(authControllerProvider.future);
   if (usuario == null) return const [];
 
-  final (query, estadoFijo) = params;
   final repo = ref.watch(recepcionRepositoryProvider);
   final q = query.isEmpty ? null : query;
   final idUsuarioReceptor = estadoFijo == 'PEND_CONTROL' ? null : usuario.idUsuario;

@@ -10,6 +10,7 @@ import '../../../core/errors/app_exception.dart';
 import '../../../core/widgets/barcode_scanner_screen.dart';
 import '../../picking_operario/domain/picking_models.dart';
 import '../../recepcion/domain/orden_compra_models.dart';
+import '../../recepcion/domain/recepcion_models.dart' show ZonaSimple;
 import '../../stock/domain/stock_models.dart';
 import '../application/escaner_providers.dart';
 import '../application/escaner_search_providers.dart';
@@ -217,17 +218,24 @@ class _Resultados extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final productos = ref.watch(escanerProductosResultsProvider);
     final ubicaciones = ref.watch(escanerUbicacionesResultsProvider);
+    final zonas = ref.watch(escanerZonasResultsProvider);
     final oc = ref.watch(escanerOcResultProvider);
     final contenedor = ref.watch(escanerContenedorResultProvider);
 
-    final cargando = productos.isLoading || ubicaciones.isLoading || oc.isLoading || contenedor.isLoading;
-    final error = productos.error ?? ubicaciones.error ?? oc.error ?? contenedor.error;
+    final cargando =
+        productos.isLoading || ubicaciones.isLoading || zonas.isLoading || oc.isLoading || contenedor.isLoading;
+    final error = productos.error ?? ubicaciones.error ?? zonas.error ?? oc.error ?? contenedor.error;
     final listaProductos = productos.value ?? const [];
     final listaUbicaciones = ubicaciones.value ?? const [];
+    final listaZonas = zonas.value ?? const [];
     final ocEncontrada = oc.value;
     final contenedorEncontrado = contenedor.value;
 
-    final sinNada = listaProductos.isEmpty && listaUbicaciones.isEmpty && ocEncontrada == null && contenedorEncontrado == null;
+    final sinNada = listaProductos.isEmpty &&
+        listaUbicaciones.isEmpty &&
+        listaZonas.isEmpty &&
+        ocEncontrada == null &&
+        contenedorEncontrado == null;
 
     if (cargando && sinNada) {
       return const Center(child: CircularProgressIndicator());
@@ -268,6 +276,14 @@ class _Resultados extends ConsumerWidget {
           ...listaProductos.map((p) => Padding(
                 padding: const EdgeInsets.only(bottom: 10),
                 child: _ProductoTile(producto: p),
+              )),
+          const SizedBox(height: 20),
+        ],
+        if (listaZonas.isNotEmpty) ...[
+          const _SectionTitle('ZONAS'),
+          ...listaZonas.map((z) => Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: _ZonaTile(zona: z),
               )),
           const SizedBox(height: 20),
         ],
@@ -371,6 +387,24 @@ class _ProductoTile extends StatelessWidget {
       titulo: producto.nombre,
       subtitulo: producto.codigoInterno,
       trailing: claseLabel == null ? null : _Badge(texto: claseLabel),
+    );
+  }
+}
+
+class _ZonaTile extends StatelessWidget {
+  const _ZonaTile({required this.zona});
+
+  final ZonaSimple zona;
+
+  @override
+  Widget build(BuildContext context) {
+    return _ResultCard(
+      onTap: () => context.push('/stock/zona/${zona.idZona}', extra: zona.nombre),
+      leadingIcon: Icons.map_outlined,
+      leadingColor: const Color(0xFF0891B2),
+      titulo: zona.nombre,
+      subtitulo: zona.codigo ?? 'Sin código',
+      trailing: null,
     );
   }
 }

@@ -57,6 +57,12 @@ class AuthRepository {
     );
   }
 
+  /// Limpia el token guardado sin avisarle al backend — se usa cuando ya
+  /// sabemos que el token es inválido/vencido (401 recibido en cualquier
+  /// otro request, ver `sesionExpiradaProvider`), así no generamos un
+  /// segundo request condenado a fallar igual.
+  Future<void> logoutLocal() => _secureStorage.clearToken();
+
   Future<bool> hasSession() async {
     final token = await _secureStorage.readToken();
     return token != null;

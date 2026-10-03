@@ -35,13 +35,16 @@ final etiquetaTemplateProvider = FutureProvider.family.autoDispose<EtiquetaTempl
   return ref.watch(produccionRepositoryProvider).obtenerEtiqueta(idEtiqueta);
 });
 
-/// Órdenes en curso (EN_PROCESO/PAUSADA) del almacén del usuario, para
-/// "retomar" una producción sin tener que recordar el id.
+/// Órdenes en curso (EN_PROCESO/PAUSADA) del almacén, filtradas a las
+/// propias del usuario (creador u operario) para "retomar" sin exponer lo
+/// que otro compañero dejó en curso en el mismo almacén.
 final ordenesEnCursoProvider = FutureProvider.autoDispose<List<OrdenListItem>>((ref) async {
   enableSilentRefresh(ref);
   final usuario = await ref.watch(authControllerProvider.future);
   if (usuario?.idAlmacenSeleccionado == null) return const [];
-  return ref.watch(produccionRepositoryProvider).ordenesEnCurso(idAlmacen: usuario!.idAlmacenSeleccionado!);
+  return ref
+      .watch(produccionRepositoryProvider)
+      .ordenesEnCurso(idAlmacen: usuario!.idAlmacenSeleccionado!, idUsuario: usuario.idUsuario);
 });
 
 /// Detalle "en vivo" de una orden — refresco silencioso cada 15s para que
@@ -50,6 +53,16 @@ final ordenesEnCursoProvider = FutureProvider.autoDispose<List<OrdenListItem>>((
 final ordenDetalleProvider = FutureProvider.family.autoDispose<OrdenProduccion, int>((ref, idOrden) {
   enableSilentRefresh(ref);
   return ref.watch(produccionRepositoryProvider).obtenerOrden(idOrden);
+});
+
+/// Historial de "mis producciones" (órdenes FINALIZADAS donde el usuario es
+/// creador u operario, cualquier almacén) — accesible desde el ícono de
+/// opciones en `ProduccionHomeScreen`.
+final misProduccionesProvider = FutureProvider.autoDispose<List<OrdenListItem>>((ref) async {
+  enableSilentRefresh(ref);
+  final usuario = await ref.watch(authControllerProvider.future);
+  if (usuario == null) return const [];
+  return ref.watch(produccionRepositoryProvider).misProducciones(idUsuario: usuario.idUsuario);
 });
 
 /// Etiquetas de los lotes generados por una orden ya finalizada.

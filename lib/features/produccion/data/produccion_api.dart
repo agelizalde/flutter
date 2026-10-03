@@ -92,10 +92,10 @@ class ProduccionApi {
     return items.map(EtiquetaProduccion.fromJson).toList();
   }
 
-  Future<List<OrdenListItem>> listarOrdenes({String? estado, int? idAlmacen, int limit = 50}) async {
+  Future<List<OrdenListItem>> listarOrdenes({String? estado, int? idAlmacen, int? idUsuario, int limit = 50}) async {
     final res = await _dio.get<Map<String, dynamic>>(
       '/produccion/ordenes',
-      queryParameters: {'estado': ?estado, 'id_almacen': ?idAlmacen, 'limit': limit},
+      queryParameters: {'estado': ?estado, 'id_almacen': ?idAlmacen, 'id_usuario': ?idUsuario, 'limit': limit},
     );
     final items = (res.data!['items'] as List).cast<Map<String, dynamic>>();
     return items.map(OrdenListItem.fromJson).toList();

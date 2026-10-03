@@ -391,6 +391,8 @@ class OrdenListItem {
     this.productoPrincipalNombre,
     required this.tiempoEstimadoSegundos,
     this.tiempoRealSegundos,
+    this.creadoEn,
+    this.finalizadoEn,
   });
 
   factory OrdenListItem.fromJson(Map<String, dynamic> j) => OrdenListItem(
@@ -403,6 +405,8 @@ class OrdenListItem {
     productoPrincipalNombre: j['producto_principal_nombre'] as String?,
     tiempoEstimadoSegundos: j['tiempo_estimado_segundos'] as int? ?? 0,
     tiempoRealSegundos: j['tiempo_real_segundos'] as int?,
+    creadoEn: parseDateOrNull(j['creado_en']),
+    finalizadoEn: parseDateOrNull(j['finalizado_en']),
   );
 
   final int idOrden;
@@ -416,6 +420,8 @@ class OrdenListItem {
   final String? productoPrincipalNombre;
   final int tiempoEstimadoSegundos;
   final int? tiempoRealSegundos;
+  final DateTime? creadoEn;
+  final DateTime? finalizadoEn;
 }
 
 /// Fila de `produccion_ordenes_consumo` (ver `orden_service.py::_consumo_of`).
@@ -463,6 +469,8 @@ class OrdenLineaResultado {
     this.cantidadReal,
     this.diasVencimiento,
     this.loteInterno,
+    this.fechaVencimiento,
+    this.ubicacionNombre,
   });
 
   factory OrdenLineaResultado.fromJson(Map<String, dynamic> j) => OrdenLineaResultado(
@@ -477,6 +485,8 @@ class OrdenLineaResultado {
     cantidadReal: parseDoubleOrNull(j['cantidad_real']),
     diasVencimiento: j['dias_vencimiento'] as int?,
     loteInterno: j['lote_interno'] as String?,
+    fechaVencimiento: parseDateOrNull(j['fecha_vencimiento']),
+    ubicacionNombre: j['ubicacion_nombre'] as String?,
   );
 
   final int idOrdenResultado;
@@ -488,6 +498,15 @@ class OrdenLineaResultado {
   final double? cantidadReal;
   final int? diasVencimiento;
   final String? loteInterno;
+
+  /// Vencimiento real del lote generado (`lotes.fecha_vencimiento`) — a
+  /// diferencia de `diasVencimiento`, que es el criterio de la receta.
+  final DateTime? fechaVencimiento;
+
+  /// Dónde quedó guardado ese lote (ver `orden_service.py::_resultado_of`)
+  /// — puede variar entre líneas de la misma orden si el producto tiene
+  /// ubicación automática configurada (`productos_almacenaje.id_ubicacion_automatica`).
+  final String? ubicacionNombre;
 }
 
 /// Fila de `produccion_ordenes_mermas` — `idProducto` null = merma genérica.
@@ -539,6 +558,16 @@ class OrdenProduccion {
     required this.consumo,
     required this.resultado,
     required this.mermas,
+    this.recetaNombre,
+    this.almacenNombre,
+    this.creadorNombre,
+    this.operarioNombre,
+    this.creadoEn,
+    this.iniciadoEn,
+    this.finalizadoEn,
+    this.actualizadoEn,
+    this.observaciones,
+    this.motivoAnulacion,
   });
 
   factory OrdenProduccion.fromJson(Map<String, dynamic> j) => OrdenProduccion(
@@ -556,6 +585,16 @@ class OrdenProduccion {
     consumo: (j['consumo'] as List).cast<Map<String, dynamic>>().map(OrdenLineaConsumo.fromJson).toList(),
     resultado: (j['resultado'] as List).cast<Map<String, dynamic>>().map(OrdenLineaResultado.fromJson).toList(),
     mermas: (j['mermas'] as List).cast<Map<String, dynamic>>().map(OrdenLineaMerma.fromJson).toList(),
+    recetaNombre: j['receta_nombre'] as String?,
+    almacenNombre: j['almacen_nombre'] as String?,
+    creadorNombre: j['creador_nombre'] as String?,
+    operarioNombre: j['operario_nombre'] as String?,
+    creadoEn: parseDateOrNull(j['creado_en']),
+    iniciadoEn: parseDateOrNull(j['iniciado_en']),
+    finalizadoEn: parseDateOrNull(j['finalizado_en']),
+    actualizadoEn: parseDateOrNull(j['actualizado_en']),
+    observaciones: j['observaciones'] as String?,
+    motivoAnulacion: j['motivo_anulacion'] as String?,
   );
 
   final int idOrden;
@@ -574,6 +613,24 @@ class OrdenProduccion {
   final List<OrdenLineaConsumo> consumo;
   final List<OrdenLineaResultado> resultado;
   final List<OrdenLineaMerma> mermas;
+
+  final String? recetaNombre;
+  final String? almacenNombre;
+
+  /// Quién armó la orden — puede diferir de [operarioNombre] si otra
+  /// persona la retomó/finalizó (`orden_service.py::ordenes_iniciar` fija
+  /// el operario recién al iniciar el cronómetro).
+  final String? creadorNombre;
+  final String? operarioNombre;
+  final DateTime? creadoEn;
+  final DateTime? iniciadoEn;
+  final DateTime? finalizadoEn;
+
+  /// Fallback para "cuándo" cuando el estado terminal no pasó por
+  /// `finalizar` (ej. ANULADA, que nunca completa `finalizadoEn`).
+  final DateTime? actualizadoEn;
+  final String? observaciones;
+  final String? motivoAnulacion;
 }
 
 /// Resultado de `POST /produccion/ordenes` (solo lo que necesita el flujo

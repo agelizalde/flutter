@@ -9,6 +9,7 @@ import '../../../core/errors/app_exception.dart';
 import '../application/produccion_providers.dart';
 import 'widgets/orden_en_curso_tile.dart';
 import 'widgets/receta_tile.dart';
+import 'widgets/seccion_label.dart';
 
 /// Punto de entrada de Producción — "Retomar" (órdenes EN_PROCESO/PAUSADA)
 /// arriba, elegir receta abajo. Análogo a `TallerInicioPage.jsx` de la web,
@@ -44,7 +45,27 @@ class _ProduccionHomeScreenState extends ConsumerState<ProduccionHomeScreen> {
     final recetasAsync = ref.watch(recetasListadoProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Producción')),
+      appBar: AppBar(
+        title: const Text('Producción'),
+        actions: [
+          PopupMenuButton<_ProduccionMenuOpcion>(
+            icon: const Icon(Icons.more_vert),
+            onSelected: (opcion) {
+              switch (opcion) {
+                case _ProduccionMenuOpcion.misProducciones:
+                  context.push('/produccion/mis-producciones');
+              }
+            },
+            itemBuilder: (context) => const [
+              PopupMenuItem(
+                value: _ProduccionMenuOpcion.misProducciones,
+                child: Text('Ver mis producciones'),
+              ),
+              // Más opciones se agregan acá.
+            ],
+          ),
+        ],
+      ),
       body: RefreshIndicator(
         onRefresh: () async {
           ref.invalidate(ordenesEnCursoProvider);
@@ -61,24 +82,20 @@ class _ProduccionHomeScreenState extends ConsumerState<ProduccionHomeScreen> {
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'RETOMAR',
-                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1.0, color: AppColors.muted),
-                    ),
+                    const SeccionLabel(icono: Icons.history, texto: 'RETOMAR'),
                     const SizedBox(height: 10),
                     for (final o in ordenes) ...[
                       OrdenEnCursoTile(orden: o),
                       const SizedBox(height: 10),
                     ],
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 12),
+                    const Divider(height: 1, color: AppColors.border),
+                    const SizedBox(height: 22),
                   ],
                 );
               },
             ),
-            const Text(
-              'ELEGÍ QUÉ PRODUCIR',
-              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1.0, color: AppColors.muted),
-            ),
+            const SeccionLabel(icono: Icons.receipt_long_outlined, texto: 'ELEGÍ QUÉ PRODUCIR'),
             const SizedBox(height: 10),
             TextField(
               controller: _controller,
@@ -101,9 +118,15 @@ class _ProduccionHomeScreenState extends ConsumerState<ProduccionHomeScreen> {
               data: (recetas) {
                 if (recetas.isEmpty) {
                   return const Padding(
-                    padding: EdgeInsets.only(top: 40),
+                    padding: EdgeInsets.only(top: 32),
                     child: Center(
-                      child: Text('No hay recetas activas', style: TextStyle(color: AppColors.muted)),
+                      child: Column(
+                        children: [
+                          Icon(Icons.search_off, size: 32, color: AppColors.faint),
+                          SizedBox(height: 10),
+                          Text('No hay recetas activas', style: TextStyle(color: AppColors.muted)),
+                        ],
+                      ),
                     ),
                   );
                 }
@@ -126,3 +149,7 @@ class _ProduccionHomeScreenState extends ConsumerState<ProduccionHomeScreen> {
     );
   }
 }
+
+/// Opciones del menú de arriba a la derecha en el Home de Producción — hoy
+/// solo "Ver mis producciones", pensado para sumar más entradas después.
+enum _ProduccionMenuOpcion { misProducciones }
