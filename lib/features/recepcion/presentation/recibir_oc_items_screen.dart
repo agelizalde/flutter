@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -238,6 +239,19 @@ class _RecibirOcItemsScreenState extends ConsumerState<RecibirOcItemsScreen> {
       context.pushReplacement('/recepcion/${resultado.recepcion.idRecepcion}');
     } catch (e) {
       if (!mounted) return;
+
+      // Red de seguridad: `recepcionOcBorradorExistenteProvider` ya debería
+      // haber bloqueado la pantalla antes de llegar acá, pero si de todas
+      // formas el backend rechaza con este 409 (ej. otra sesión creó el
+      // borrador en el medio), hay que llevar a esa recepción en vez de
+      // mostrar un error genérico y dejar que la persona reintente y
+      // duplique la cantidad recibida.
+      final appError = e is DioException ? e.error : null;
+      if (appError is RecepcionBorradorExistenteException) {
+        context.pushReplacement('/recepcion/${appError.idRecepcionExistente}');
+        return;
+      }
+
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(describeError(e))));
     } finally {
       if (mounted) setState(() => _guardando = false);
@@ -247,10 +261,27 @@ class _RecibirOcItemsScreenState extends ConsumerState<RecibirOcItemsScreen> {
   @override
   Widget build(BuildContext context) {
     final async = ref.watch(recepcionOcDetalleProvider(widget.idOc));
+    final borradorAsync = ref.watch(recepcionOcBorradorExistenteProvider(widget.idOc));
 
     return Scaffold(
       appBar: AppBar(title: const Text('Ítems a recibir')),
-      body: async.when(
+      // Si la OC ya tiene una recepción en BORRADOR (p. ej. esperando que
+      // se apruebe/firme un exceso de cantidad), hay que continuar esa en
+      // vez de dejar que se cree otra y se duplique la cantidad recibida
+      // (ver `recepcionOcBorradorExistenteProvider`). Si esta consulta
+      // falla, no bloqueamos: el backend igual lo rechaza con 409 como red
+      // de seguridad (ver el catch de `_continuar`).
+      body: borradorAsync.maybeWhen(
+        data: (borrador) => borrador != null
+            ? _BorradorExistenteAviso(idRecepcion: borrador.idRecepcion)
+            : _buildItems(async),
+        orElse: () => _buildItems(async),
+      ),
+    );
+  }
+
+  Widget _buildItems(AsyncValue<OrdenCompraDetalle> async) {
+    return async.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(
           child: Padding(
@@ -316,6 +347,45 @@ class _RecibirOcItemsScreenState extends ConsumerState<RecibirOcItemsScreen> {
             ],
           );
         },
+      );
+  }
+}
+
+/// Aviso de bloqueo cuando `recepcionOcBorradorExistenteProvider` encuentra
+/// una recepción BORRADOR previa para esta OC — en vez de dejar que se
+/// cargue el formulario de ítems (que terminaría creando una segunda
+/// recepción y duplicando la cantidad recibida), lleva directo a
+/// continuar la existente.
+class _BorradorExistenteAviso extends StatelessWidget {
+  const _BorradorExistenteAviso({required this.idRecepcion});
+
+  final int idRecepcion;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.pending_actions_outlined, size: 40, color: AppColors.accentDark),
+            const SizedBox(height: 14),
+            Text(
+              'Esta OC ya tiene la recepción #$idRecepcion en BORRADOR sin '
+              'confirmar (posiblemente esperando que se apruebe/firme un '
+              'exceso de cantidad).\n\nContinuá esa recepción en vez de crear '
+              'una nueva, para no duplicar la cantidad recibida.',
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: AppColors.muted, fontSize: 13.5, height: 1.5),
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton(
+              onPressed: () => context.pushReplacement('/recepcion/$idRecepcion'),
+              child: const Text('Ir a esa recepción'),
+            ),
+          ],
+        ),
       ),
     );
   }

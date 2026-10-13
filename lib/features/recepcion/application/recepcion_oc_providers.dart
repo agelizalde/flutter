@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../auth/application/auth_controller.dart';
 import '../domain/orden_compra_models.dart';
+import '../domain/recepcion_models.dart';
 import 'recepcion_providers.dart';
 
 /// OC aprobadas de un proveedor, acotadas al almacén base del usuario
@@ -34,6 +35,22 @@ final recepcionOcPendientesTodasProvider =
 final recepcionOcDetalleProvider =
     FutureProvider.family.autoDispose<OrdenCompraDetalle, int>((ref, idOc) {
   return ref.watch(recepcionRepositoryProvider).obtenerOcParaRecepcion(idOc);
+});
+
+/// Si la OC ya tiene una recepción en BORRADOR sin confirmar (típicamente
+/// porque quedó esperando que se apruebe/firme un exceso de cantidad), la
+/// trae acá en vez de dejar que `RecibirOcItemsScreen` cree otra — crearla
+/// de nuevo duplicaría la cantidad recibida si ambas llegan a confirmarse
+/// (el backend ya lo rechaza con 409, ver `recepcion_oc.py`, pero conviene
+/// avisar antes de que la persona cargue de nuevo todos los ítems). `null`
+/// si no hay ninguna.
+final recepcionOcBorradorExistenteProvider =
+    FutureProvider.family.autoDispose<Recepcion?, int>((ref, idOc) async {
+  final recepciones = await ref.watch(recepcionRepositoryProvider).recepcionesPorOc(idOc);
+  for (final r in recepciones) {
+    if (r.estado == 'BORRADOR') return r;
+  }
+  return null;
 });
 
 /// Header + TODOS los ítems de una OC (no solo pendientes), sin exigir

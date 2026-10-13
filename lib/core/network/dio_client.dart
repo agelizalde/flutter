@@ -137,7 +137,22 @@ class DioClient {
 
   DioException _mapError(DioException error) {
     final status = error.response?.statusCode;
-    final detail = _extraerDetalle(error.response?.data);
+    final data = error.response?.data;
+
+    // Caso especial de 409: la OC ya tiene otra recepción en BORRADOR (ver
+    // `_assert_sin_recepcion_borrador_activa` en el backend). Ese `detail`
+    // viene como objeto, no como string, así que `_extraerDetalle` no lo
+    // captura — hay que resolverlo antes del switch genérico para no caer
+    // en el mensaje por defecto de `ConflictException` (que es de
+    // optimistic locking, no aplica acá).
+    if (status == 409) {
+      final borrador = _extraerRecepcionBorradorExistente(data);
+      if (borrador != null) {
+        return error.copyWith(error: borrador);
+      }
+    }
+
+    final detail = _extraerDetalle(data);
 
     final AppException mapped = switch (status) {
       401 => UnauthorizedException(
@@ -168,6 +183,30 @@ class DioClient {
       _ => error.error?.toString() ?? error.message ?? 'error desconocido',
     };
     return 'Sin conexión con el servidor ($causa)';
+  }
+
+  /// Reconoce el `detail` estructurado que manda
+  /// `_assert_sin_recepcion_borrador_activa` (back-app `recepcion_oc.py`):
+  /// `{"message": "...", "id_recepcion_existente": N, "estado_recepcion_existente":
+  /// "BORRADOR", "esperando_firma_exceso": bool}`. `null` si el 409 es
+  /// cualquier otro (p. ej. conflicto de `row_version`).
+  RecepcionBorradorExistenteException? _extraerRecepcionBorradorExistente(
+    Object? data,
+  ) {
+    if (data is! Map) return null;
+    final detail = data['detail'];
+    if (detail is! Map) return null;
+
+    final id = detail['id_recepcion_existente'];
+    final idRecepcion = id is int ? id : int.tryParse(id?.toString() ?? '');
+    if (idRecepcion == null) return null;
+
+    return RecepcionBorradorExistenteException(
+      detail['message']?.toString() ??
+          'La OC ya tiene una recepción en BORRADOR sin confirmar.',
+      idRecepcionExistente: idRecepcion,
+      esperandoFirmaExceso: detail['esperando_firma_exceso'] == true,
+    );
   }
 
   /// `detail` de FastAPI viene como `String` para errores de negocio

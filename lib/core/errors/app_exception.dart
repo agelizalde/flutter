@@ -26,6 +26,23 @@ class ConflictException extends AppException {
   ]);
 }
 
+/// 409 — la OC ya tiene otra recepción en BORRADOR sin confirmar (p. ej.
+/// esperando que se apruebe/firme un exceso de cantidad) — ver
+/// `_assert_sin_recepcion_borrador_activa` en `recepcion_oc.py`. A
+/// diferencia de [ConflictException] (optimistic locking), trae el id de
+/// esa recepción para que la UI lleve al usuario directo a continuarla en
+/// vez de dejarlo reintentar y duplicar la cantidad recibida.
+class RecepcionBorradorExistenteException extends AppException {
+  const RecepcionBorradorExistenteException(
+    super.message, {
+    required this.idRecepcionExistente,
+    required this.esperandoFirmaExceso,
+  });
+
+  final int idRecepcionExistente;
+  final bool esperandoFirmaExceso;
+}
+
 /// 4xx de validación / regla de negocio (422, 400, etc.).
 class BusinessException extends AppException {
   const BusinessException(super.message);
