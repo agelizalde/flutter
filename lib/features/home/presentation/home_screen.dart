@@ -78,6 +78,12 @@ const _modulosBase = [
   _ModuloDeposito('Asignar pickers', 'Asignar tareas de picking', Icons.assignment_ind_outlined, '/picking-asignacion', Color(0xFFD97706), 'app.picking_asignacion.ver'),
   _ModuloDeposito('Control de calidad', 'Controlar pedidos armados', Icons.fact_check_outlined, '/picking-control', Color(0xFF0D9488), 'app.picking_control.ver'),
   _ModuloDeposito('OC simples', 'Órdenes de compra', Icons.shopping_cart_outlined, '/oc-simple', Color(0xFFDB2777), 'app.oc_simple.ver', requiereRedInterna: false),
+  // Arma la OC en BORRADOR (sin precio) para que Compras la revise y la
+  // confirme desde la PC — ver `oc_crear_borrador_app.py`. Aunque sus
+  // prefijos están abiertos en `public.`, crear OC es solo dentro de la
+  // empresa: `oc.crear_app` está desactivado en Acceso público (el endpoint
+  // daría 404), así que la tarjeta se oculta fuera de la red interna.
+  _ModuloDeposito('Nueva OC', 'Pedir a un proveedor', Icons.post_add_outlined, '/oc-borrador', Color(0xFF0F766E), 'app.oc_borrador.ver'),
   // El módulo Creador en sí agrupa 5 permisos distintos (proveedores/
   // marcas/productos/zonas/ubicaciones) y cada pestaña adentro ya se oculta
   // sola según el permiso puntual del usuario (ver `CreadorHomeScreen`);

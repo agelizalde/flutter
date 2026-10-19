@@ -12,11 +12,32 @@
          instalación aunque el usuario ya haya habilitado "instalar apps
          desconocidas" para esta app. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
+    <!-- Requerido desde Android 13 (API 33) para mostrar notificaciones push
+         (FCM) — sin esto el sistema las descarta en silencio aunque el
+         usuario nunca haya dicho que no. firebase_messaging pide el permiso
+         en tiempo de ejecución (`requestPermission()`), esto solo lo declara. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <application
         android:label="RS - WH"
         android:name="${applicationName}"
         android:icon="@mipmap/launcher_icon"
         android:networkSecurityConfig="@xml/network_security_config">
+        <!-- Ícono por defecto para las notificaciones push que llegan con la
+             app en background/cerrada (Android las muestra solo). Tiene que
+             ser blanco sobre transparente: Android ignora el color y tiñe
+             todo lo opaco con un solo color (ver default_notification_color
+             abajo); usar el logo a color tal cual (como estaba antes, con
+             @mipmap/launcher_icon) se ve como un blob blanco sin forma. Ver
+             wherehouse/android/app/src/main/res/drawable-*dpi/ic_notification.png,
+             generado a partir de assets/images/app_icon_foreground.png
+             (solo el barco+ola, sin el anillo ni el texto "RIVER SUPPLY":
+             a 24dp ese detalle se pierde y queda ilegible). -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_notification" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_color"
+            android:resource="@color/notification_color" />
         <activity
             android:name=".MainActivity"
             android:exported="true"

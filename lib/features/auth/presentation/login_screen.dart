@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../app/theme.dart';
 import '../../../core/errors/app_exception.dart';
+import '../../../core/providers.dart';
 import '../application/auth_controller.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
@@ -18,6 +19,20 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _userController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _precargarUltimoUsuario();
+  }
+
+  /// Solo el usuario del último login en este teléfono — la contraseña no
+  /// se guarda nunca.
+  Future<void> _precargarUltimoUsuario() async {
+    final ultimoUsuario = await ref.read(authRepositoryProvider).ultimoUsuario();
+    if (!mounted || ultimoUsuario == null || _userController.text.isNotEmpty) return;
+    setState(() => _userController.text = ultimoUsuario);
+  }
 
   @override
   void dispose() {

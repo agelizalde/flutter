@@ -2,6 +2,16 @@ plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
+    // `apply false` + aplicado condicional más abajo: el plugin falla la
+    // build entera si no encuentra google-services.json, y ese archivo
+    // recién existe cuando alguien registre la app en Firebase Console. Sin
+    // esto, cualquier build de Android (incluso para algo sin relación a
+    // push) se rompe hasta ese momento.
+    id("com.google.gms.google-services") apply false
+}
+
+if (file("google-services.json").exists()) {
+    apply(plugin = "com.google.gms.google-services")
 }
 
 android {

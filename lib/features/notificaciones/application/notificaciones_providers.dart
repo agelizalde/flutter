@@ -6,6 +6,7 @@ import '../../../core/utils/silent_refresh.dart';
 import '../data/notificaciones_api.dart';
 import '../data/notificaciones_repository.dart';
 import '../domain/notificacion_model.dart';
+import '../domain/preferencia_push_model.dart';
 
 final notificacionesApiProvider = Provider<NotificacionesApi>((ref) {
   return NotificacionesApi(ref.watch(dioClientProvider).dio);
@@ -36,4 +37,12 @@ final misNotificacionesProvider = FutureProvider.autoDispose<List<Notificacion>>
   });
 
   return ref.watch(notificacionesRepositoryProvider).misNotificaciones();
+});
+
+/// "Qué módulos me avisan al teléfono" (pantalla Configuración →
+/// Notificaciones push). Tras un PATCH, la pantalla invalida este provider
+/// para refrescar — no hace falta un notifier con estado propio para una
+/// lista tan chica que se edita una fila a la vez.
+final pushPreferenciasProvider = FutureProvider.autoDispose<List<PreferenciaPush>>((ref) {
+  return ref.watch(notificacionesRepositoryProvider).pushPreferencias();
 });

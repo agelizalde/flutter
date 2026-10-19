@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -7,6 +7,7 @@ import '../core/widgets/debug_screen_tag.dart';
 import '../core/widgets/wherehouse_bottom_nav.dart';
 import '../features/escaner/presentation/buscador_screen.dart';
 import '../features/notificaciones/presentation/notificaciones_screen.dart';
+import '../features/notificaciones/presentation/push_preferencias_screen.dart';
 import '../features/home/presentation/configuracion_screen.dart';
 import '../features/home/presentation/perfil_screen.dart';
 import '../features/pedidos/domain/pedido_models.dart' show SubpedidoResumen;
@@ -35,6 +36,7 @@ import '../features/expedicion/presentation/expedicion_detalle_screen.dart';
 import '../features/expedicion/presentation/expedicion_home_screen.dart';
 import '../features/firmas/presentation/firma_solicitud_detalle_screen.dart';
 import '../features/firmas/presentation/firmas_pendientes_screen.dart';
+import '../features/oc_borrador/presentation/oc_borrador_screen.dart';
 import '../features/oc_simple/presentation/oc_simple_screen.dart';
 import '../features/pos/presentation/pos_screen.dart';
 import '../features/picking_control/presentation/picking_control_detalle_screen.dart';
@@ -83,11 +85,19 @@ class _AuthRefreshListenable extends ChangeNotifier {
   }
 }
 
+/// Clave estable del `Navigator` raíz — la necesita
+/// `PushNotificationsService` para conseguir un `BuildContext` válido y
+/// navegar cuando el usuario toca una notificación push del sistema (app en
+/// background/terminada), momento en el que no hay ningún widget propio
+/// desde el que arrancar la navegación (ver `app/app.dart`).
+final rootNavigatorKey = GlobalKey<NavigatorState>();
+
 final routerProvider = Provider<GoRouter>((ref) {
   final authListenable = _AuthRefreshListenable(ref);
   ref.onDispose(authListenable.dispose);
 
   return GoRouter(
+    navigatorKey: rootNavigatorKey,
     initialLocation: '/',
     // `ConexionEstado.sinConexion` es un `ValueNotifier` (ya `Listenable`)
     // — combinado acá, un cambio de conectividad dispara `redirect` igual
@@ -348,6 +358,11 @@ final routerProvider = Provider<GoRouter>((ref) {
             const DebugScreenTag(label: 'OC simple', child: OcSimpleScreen()),
       ),
       GoRoute(
+        path: '/oc-borrador',
+        builder: (context, state) =>
+            const DebugScreenTag(label: 'Nueva OC', child: OcBorradorScreen()),
+      ),
+      GoRoute(
         path: '/creador',
         builder: (context, state) =>
             const DebugScreenTag(label: 'Creador', child: CreadorHomeScreen()),
@@ -550,6 +565,11 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/cambiar-password',
         builder: (context, state) =>
             const DebugScreenTag(label: 'Actualizar contraseña', child: CambiarPasswordScreen()),
+      ),
+      GoRoute(
+        path: '/configuracion/notificaciones-push',
+        builder: (context, state) =>
+            const DebugScreenTag(label: 'Configuración · Notificaciones push', child: PushPreferenciasScreen()),
       ),
       GoRoute(
         path: '/vehiculos',

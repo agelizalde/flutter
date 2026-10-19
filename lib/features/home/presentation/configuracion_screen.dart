@@ -47,6 +47,12 @@ class ConfiguracionScreen extends ConsumerWidget {
                   subtitulo: versionTexto,
                   onTap: () => _buscarActualizaciones(context, ref),
                 ),
+                SettingsTile(
+                  icono: Icons.notifications_active_outlined,
+                  titulo: 'Notificaciones push',
+                  subtitulo: 'Qué módulos te avisan al teléfono',
+                  onTap: () => context.push('/configuracion/notificaciones-push'),
+                ),
               ],
             ),
           ],

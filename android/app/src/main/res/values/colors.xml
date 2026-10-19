@@ -1,4 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="ic_launcher_background">#FFFFFF</color>
+    <!-- Azul de marca (mismo theme_color del flutter_launcher_icons en
+         pubspec.yaml): tiñe el ícono blanco de las notificaciones push. -->
+    <color name="notification_color">#2D7EC0</color>
 </resources>

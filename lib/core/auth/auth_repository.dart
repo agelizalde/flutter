@@ -17,11 +17,24 @@ class AuthRepository {
   }) async {
     final response = await _dioClient.dio.post<Map<String, dynamic>>(
       '/auth/login',
-      data: {'email_or_username': emailOrUsername, 'password': password},
+      // `cliente` le dice al backend que es la app: la sesión dura 8h, o no
+      // vence si el usuario tiene "sesión fija" (ver
+      // CLIENTE_APP_WHEREHOUSE en core/security.py del backend).
+      data: {
+        'email_or_username': emailOrUsername,
+        'password': password,
+        'cliente': 'WHEREHOUSE',
+      },
     );
     final token = response.data!['access_token'] as String;
     await _secureStorage.saveToken(token);
+    await _secureStorage.saveUltimoUsuario(emailOrUsername);
   }
+
+  Future<String?> ultimoUsuario() => _secureStorage.readUltimoUsuario();
+
+  Future<void> borrarCredencialesLegacy() =>
+      _secureStorage.borrarCredencialesLegacy();
 
   Future<UsuarioActual> me() async {
     final response = await _dioClient.dio.get<Map<String, dynamic>>('/auth/me');

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "365287481100",
+    "project_id": "rs-wherehouse",
+    "storage_bucket": "rs-wherehouse.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:365287481100:android:6af2e772ce7cea12a0f329",
+        "android_client_info": {
+          "package_name": "com.riversupply.wherehouse"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD72V1bjoDaKk3jOLr7lwxxet0XsvI-i7E"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
