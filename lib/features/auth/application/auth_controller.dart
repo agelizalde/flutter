@@ -1,7 +1,9 @@
 import 'dart:async';
 
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/auth/auth_repository.dart';
 import '../../../core/auth/sesion_expirada.dart';
 import '../../../core/auth/usuario_actual.dart';
 import '../../../core/notifications/push_notifications_service.dart';
@@ -43,7 +45,7 @@ class AuthController extends AsyncNotifier<UsuarioActual?> {
 
     if (!await repo.hasSession()) return null;
     try {
-      final usuario = await repo.me();
+      final usuario = await _restaurarSesion(repo);
       // Sesión restaurada al abrir la app (no un login recién hecho) — el
       // primer intento de `PushNotificationsService.inicializar()` en
       // `app/app.dart` puede haber corrido antes de que esto resolviera,
@@ -56,6 +58,27 @@ class AuthController extends AsyncNotifier<UsuarioActual?> {
     } catch (_) {
       // Token guardado pero inválido/vencido: tratar como no logueado.
       return null;
+    }
+  }
+
+  /// `/auth/me` al abrir la app con un token guardado. Solo un 401/403 (el
+  /// backend dice que la sesión ya no sirve) cuenta como "no logueado";
+  /// cualquier otra falla (red todavía no lista al arrancar —en iOS la app
+  /// se reabre en frío seguido—, cambio erp./public. en curso, timeout,
+  /// 5xx) se reintenta con backoff en vez de mandar al login: antes eso
+  /// deslogueaba a usuarios con sesión fija aunque su token siguiera vigente.
+  Future<UsuarioActual> _restaurarSesion(AuthRepository repo) async {
+    var espera = const Duration(seconds: 2);
+    while (true) {
+      try {
+        return await repo.me();
+      } on DioException catch (e) {
+        final status = e.response?.statusCode;
+        if (status == 401 || status == 403) rethrow;
+        if (!await repo.hasSession()) rethrow; // se cerró sesión en el medio
+      }
+      await Future<void>.delayed(espera);
+      if (espera < const Duration(seconds: 15)) espera *= 2;
     }
   }
 
