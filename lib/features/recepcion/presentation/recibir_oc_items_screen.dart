@@ -58,29 +58,42 @@ class _ItemFormState {
     loteCtrl.dispose();
   }
 
+  double? get cantidad => double.tryParse(cantidadCtrl.text.trim().replaceAll(',', '.'));
+  double get rechazada => double.tryParse(rechazadaCtrl.text.trim().replaceAll(',', '.')) ?? 0;
+
+  /// Aceptado 0 y rechazado 0: el proveedor no trajo nada de este ítem. El
+  /// backend no admite un ítem 0/0, así que se quita de la recepción al
+  /// continuar y queda todo pendiente en la OC.
+  bool get noVino => cantidad == 0 && rechazada <= 0;
+
   /// `null` si está todo bien, o el mensaje de error a mostrar.
   String? validar() {
     final nombre = item.productoNombre;
     final pendiente = item.cantidadPendiente;
-    final cantidad = double.tryParse(cantidadCtrl.text.trim().replaceAll(',', '.'));
-    final rechazada = double.tryParse(rechazadaCtrl.text.trim().replaceAll(',', '.')) ?? 0;
+    final cantidad = this.cantidad;
+    final rechazada = this.rechazada;
 
-    if (cantidad == null || cantidad <= 0) {
+    if (cantidad == null || cantidad < 0 || rechazada < 0) {
       return item.requierePesaje
           ? '$nombre: pesalo e ingresá el peso real.'
           : '$nombre: ingresá una cantidad válida.';
     }
+    if (noVino) return null;
     // Ya no se valida "superar lo pendiente" acá en ningún caso — esa
     // diferencia hacia arriba la resuelve el motor de Firmas al guardar
     // (OC_DIFERENCIA_PESO si es pesable, OC_EXCESO_CANTIDAD si no). Solo
     // queda el piso ("menos que lo pendiente" con observación libre), que
-    // sigue exento para ítems pesables.
-    if (cantidad < pendiente && !item.requierePesaje && observacionCtrl.text.trim().isEmpty) {
+    // sigue exento para ítems pesables. Lo rechazado (con su motivo) también
+    // explica la diferencia, igual que en el backend.
+    if (cantidad + rechazada < pendiente && !item.requierePesaje && observacionCtrl.text.trim().isEmpty) {
       return '$nombre: recibís menos de lo pendiente, indicá una observación.';
     }
     if (rechazada > 0 && observacionRechazoCtrl.text.trim().isEmpty) {
       return '$nombre: indicá el motivo del rechazo.';
     }
+    // Rechazo total (aceptado 0): no entra nada a stock, no hace falta
+    // lote/vencimiento/faena (mismo criterio que el backend).
+    if (cantidad == 0) return null;
     if (item.requiereLote && loteCtrl.text.trim().isEmpty) {
       return '$nombre: el producto requiere lote.';
     }
@@ -169,6 +182,12 @@ class _RecibirOcItemsScreenState extends ConsumerState<RecibirOcItemsScreen> {
         return;
       }
     }
+    if (items.every((item) => _forms[item.idOcItem]!.noVino)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No cargaste nada para recibir ni rechazar.')),
+      );
+      return;
+    }
 
     setState(() => _guardando = true);
     try {
@@ -184,8 +203,12 @@ class _RecibirOcItemsScreenState extends ConsumerState<RecibirOcItemsScreen> {
       for (final importado in resultado.itemsImportados) {
         final form = _forms[importado.idOcItem];
         if (form == null) continue;
-        final cantidad = double.parse(form.cantidadCtrl.text.trim().replaceAll(',', '.'));
-        final rechazada = double.tryParse(form.rechazadaCtrl.text.trim().replaceAll(',', '.')) ?? 0;
+        if (form.noVino) {
+          await repo.quitarItem(idRecepcionItem: importado.idRecepcionItem, expectedVersion: 1);
+          continue;
+        }
+        final cantidad = form.cantidad!;
+        final rechazada = form.rechazada;
         final itemResultado = await repo.editarItem(
           idRecepcionItem: importado.idRecepcionItem,
           expectedVersion: 1,
@@ -432,10 +455,13 @@ class _OcItemCardState extends State<_OcItemCard> {
     final form = widget.form;
     final item = form.item;
     final pendiente = item.cantidadPendiente;
-    final cantidad = double.tryParse(form.cantidadCtrl.text.trim().replaceAll(',', '.')) ?? 0;
-    final rechazada = double.tryParse(form.rechazadaCtrl.text.trim().replaceAll(',', '.')) ?? 0;
-    final requiereObservacion = cantidad < pendiente && !item.requierePesaje;
+    final cantidad = form.cantidad ?? 0;
+    final rechazada = form.rechazada;
+    final noVino = form.noVino;
+    final requiereObservacion = !noVino && cantidad + rechazada < pendiente && !item.requierePesaje;
     final requiereMotivoRechazo = rechazada > 0;
+    // Con aceptado 0 no entra nada a stock: no se piden lote/vencimiento/faena.
+    final pideDatosStock = cantidad > 0 || form.cantidad == null;
     final minVenc = _fechaMinimaVencimiento(item.vidaUtilDias);
 
     return Container(
@@ -508,6 +534,13 @@ class _OcItemCardState extends State<_OcItemCard> {
               ),
             ],
           ),
+          if (noVino) ...[
+            const SizedBox(height: 8),
+            const Text(
+              'No vino: se quita de esta recepción y queda pendiente en la OC.',
+              style: TextStyle(fontSize: 11.5, color: AppColors.waTx, fontWeight: FontWeight.w600),
+            ),
+          ],
           if (requiereMotivoRechazo) ...[
             const SizedBox(height: 10),
             TextField(
@@ -522,14 +555,14 @@ class _OcItemCardState extends State<_OcItemCard> {
               decoration: const InputDecoration(labelText: '¿Por qué llega menos? *'),
             ),
           ],
-          if (item.requiereLote) ...[
+          if (pideDatosStock && item.requiereLote) ...[
             const SizedBox(height: 10),
             TextField(
               controller: form.loteCtrl,
               decoration: const InputDecoration(labelText: 'Lote proveedor *'),
             ),
           ],
-          if (item.requiereVencimiento) ...[
+          if (pideDatosStock && item.requiereVencimiento) ...[
             const SizedBox(height: 10),
             _FechaField(
               label: 'Fecha de vencimiento *',
@@ -550,7 +583,7 @@ class _OcItemCardState extends State<_OcItemCard> {
               ),
             ],
           ],
-          if (item.requiereFaena) ...[
+          if (pideDatosStock && item.requiereFaena) ...[
             const SizedBox(height: 10),
             _FechaField(
               label: 'Fecha de faenado *',
