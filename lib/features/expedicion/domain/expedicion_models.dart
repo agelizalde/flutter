@@ -230,6 +230,10 @@ class LineaCarga {
   final bool completa;
 
   bool get esCajon => tipo == 'CAJON';
+
+  /// Unidad suelta de un producto sin ningún código de barras: en modo
+  /// ESCANEO no hay nada que escanear, así que se carga tocando la línea.
+  bool get cargaManual => !esCajon && productoCodigosBarra.every((c) => c.trim().isEmpty);
 }
 
 /// `GET /pedidos/subpedidos/{id}/carga`.

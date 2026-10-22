@@ -33,17 +33,14 @@ class AuthController extends AsyncNotifier<UsuarioActual?> {
     // local al toque, sin esperar el próximo tick. El router reacciona solo
     // (ver `_AuthRefreshListenable` en app/router.dart) y manda a /login.
     _sesionExpiradaSub?.cancel();
-    _sesionExpiradaSub = ref
-        .read(sesionExpiradaProvider)
-        .stream
-        .listen((_) => _cerrarSesionPorTokenVencido());
+    _sesionExpiradaSub = ref.read(sesionExpiradaProvider).stream.listen((_) => _cerrarSesionPorTokenVencido());
     ref.onDispose(() => _sesionExpiradaSub?.cancel());
 
     // Restos del viejo login con huella (contraseña guardada en el
     // teléfono): se borran en el primer arranque de esta versión.
     unawaited(repo.borrarCredencialesLegacy());
 
-    if (!await repo.hasSession()) return null;
+    if (!await _hayTokenGuardado(repo)) return null;
     try {
       final usuario = await _restaurarSesion(repo);
       // Sesión restaurada al abrir la app (no un login recién hecho) — el
@@ -58,6 +55,22 @@ class AuthController extends AsyncNotifier<UsuarioActual?> {
     } catch (_) {
       // Token guardado pero inválido/vencido: tratar como no logueado.
       return null;
+    }
+  }
+
+  /// Leer el token puede fallar (no "no hay", sino error de plataforma) si
+  /// iOS levanta la app con el Keychain todavía cerrado — p. ej. teléfono
+  /// recién encendido sin desbloquear (ver `SecureStorage`). Eso no
+  /// significa "no logueado": se reintenta en vez de mandar al login.
+  Future<bool> _hayTokenGuardado(AuthRepository repo) async {
+    var espera = const Duration(seconds: 1);
+    while (true) {
+      try {
+        return await repo.hasSession();
+      } catch (_) {
+        await Future<void>.delayed(espera);
+        if (espera < const Duration(seconds: 10)) espera *= 2;
+      }
     }
   }
 
@@ -113,10 +126,7 @@ class AuthController extends AsyncNotifier<UsuarioActual?> {
     }
   }
 
-  Future<void> login({
-    required String emailOrUsername,
-    required String password,
-  }) async {
+  Future<void> login({required String emailOrUsername, required String password}) async {
     final repo = ref.read(authRepositoryProvider);
     state = const AsyncLoading();
     state = await AsyncValue.guard(() async {
@@ -139,5 +149,4 @@ class AuthController extends AsyncNotifier<UsuarioActual?> {
   }
 }
 
-final authControllerProvider =
-    AsyncNotifierProvider<AuthController, UsuarioActual?>(AuthController.new);
+final authControllerProvider = AsyncNotifierProvider<AuthController, UsuarioActual?>(AuthController.new);

@@ -27,18 +27,22 @@ class _ExpedicionDetalleScreenState extends ConsumerState<ExpedicionDetalleScree
   String? _error;
 
   Future<void> _escanear(DetalleCarga detalle) async {
-    final codigo = await Navigator.of(context).push<String>(
-      MaterialPageRoute(builder: (_) => const BarcodeScannerScreen()),
-    );
+    final codigo = await Navigator.of(context).push<String>(MaterialPageRoute(builder: (_) => const BarcodeScannerScreen()));
     if (codigo == null || !mounted) return;
 
     final linea = detalle.matchEscaneo(codigo);
     if (linea == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Ese código no corresponde a ningún cajón/producto pendiente de este subpedido.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Ese código no corresponde a ningún cajón/producto pendiente de este subpedido.')));
       return;
     }
+    await _procesar(() => ref.read(expedicionRepositoryProvider).escanearLinea(widget.idPedidoSubpedido, linea.idLinea));
+  }
+
+  /// Producto suelto sin código de barras: tocar la línea equivale a
+  /// escanearla (carga 1 unidad, mismo endpoint que el escaneo).
+  Future<void> _cargarTocando(LineaCarga linea) async {
     await _procesar(() => ref.read(expedicionRepositoryProvider).escanearLinea(widget.idPedidoSubpedido, linea.idLinea));
   }
 
@@ -89,7 +93,9 @@ class _ExpedicionDetalleScreenState extends ConsumerState<ExpedicionDetalleScree
       appBar: AppBar(title: const Text('Carga de camión')),
       body: async.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text(describeError(e), style: const TextStyle(color: AppColors.erTx))),
+        error: (e, _) => Center(
+          child: Text(describeError(e), style: const TextStyle(color: AppColors.erTx)),
+        ),
         data: (detalle) {
           final resumen = detalle.resumen;
           final esEscaneo = detalle.carga.modoCarga == 'ESCANEO';
@@ -106,10 +112,7 @@ class _ExpedicionDetalleScreenState extends ConsumerState<ExpedicionDetalleScree
                     ),
                     if (detalle.subpedido.codigoPedido != null) ...[
                       const SizedBox(height: 4),
-                      Text(
-                        detalle.subpedido.codigoPedido!,
-                        style: const TextStyle(fontSize: 13, color: AppColors.muted),
-                      ),
+                      Text(detalle.subpedido.codigoPedido!, style: const TextStyle(fontSize: 13, color: AppColors.muted)),
                     ],
                     const SizedBox(height: 16),
                     if (_error != null) ...[
@@ -152,10 +155,12 @@ class _ExpedicionDetalleScreenState extends ConsumerState<ExpedicionDetalleScree
                         style: TextStyle(fontSize: 12, color: AppColors.muted),
                       ),
                       const SizedBox(height: 8),
-                      ...devoluciones.map((d) => Padding(
-                            padding: const EdgeInsets.only(bottom: 10),
-                            child: DevolucionCargaTile(idPedidoSubpedido: widget.idPedidoSubpedido, devolucion: d),
-                          )),
+                      ...devoluciones.map(
+                        (d) => Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: DevolucionCargaTile(idPedidoSubpedido: widget.idPedidoSubpedido, devolucion: d),
+                        ),
+                      ),
                     ],
                     const SizedBox(height: 18),
                     Row(
@@ -175,16 +180,19 @@ class _ExpedicionDetalleScreenState extends ConsumerState<ExpedicionDetalleScree
                       ],
                     ),
                     const SizedBox(height: 4),
-                    ...detalle.lineas.map((l) => Padding(
-                          padding: const EdgeInsets.only(bottom: 10),
-                          child: _LineaCargaTile(
-                            linea: l,
-                            modoConteo: !esEscaneo,
-                            procesando: _procesando,
-                            onIncrementar: () => _contar(l, 1),
-                            onDecrementar: () => _contar(l, -1),
-                          ),
-                        )),
+                    ...detalle.lineas.map(
+                      (l) => Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: _LineaCargaTile(
+                          linea: l,
+                          modoConteo: !esEscaneo,
+                          procesando: _procesando,
+                          onIncrementar: () => _contar(l, 1),
+                          onDecrementar: () => _contar(l, -1),
+                          onTocar: esEscaneo && l.cargaManual && !l.completa ? () => _cargarTocando(l) : null,
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -193,16 +201,8 @@ class _ExpedicionDetalleScreenState extends ConsumerState<ExpedicionDetalleScree
                 child: ElevatedButton(
                   onPressed: (_procesando || resumen.pendientes > 0) ? null : _finalizarCarga,
                   child: _procesando
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                        )
-                      : Text(
-                          resumen.pendientes > 0
-                              ? 'Faltan ${resumen.pendientes} línea(s) por cargar'
-                              : 'Finalizar carga',
-                        ),
+                      ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      : Text(resumen.pendientes > 0 ? 'Faltan ${resumen.pendientes} línea(s) por cargar' : 'Finalizar carga'),
                 ),
               ),
             ],
@@ -220,6 +220,7 @@ class _LineaCargaTile extends StatelessWidget {
     required this.procesando,
     required this.onIncrementar,
     required this.onDecrementar,
+    this.onTocar,
   });
 
   final LineaCarga linea;
@@ -228,77 +229,78 @@ class _LineaCargaTile extends StatelessWidget {
   final VoidCallback onIncrementar;
   final VoidCallback onDecrementar;
 
+  /// Solo en modo ESCANEO para productos sueltos sin código de barras.
+  final VoidCallback? onTocar;
+
   @override
   Widget build(BuildContext context) {
     final listo = linea.completa;
+    final tocable = onTocar != null;
 
     return Material(
       color: listo ? AppColors.okBg : AppColors.surface,
       borderRadius: BorderRadius.circular(14),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Row(
-          children: [
-            Container(
-              width: 34,
-              height: 34,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: listo ? const Color(0xFF22C55E) : AppColors.accentSoft,
-              ),
-              child: Icon(
-                linea.esCajon ? Icons.all_inbox_outlined : Icons.inventory_2_outlined,
-                size: 18,
-                color: listo ? Colors.white : AppColors.accentDark,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    linea.etiqueta,
-                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: AppColors.text),
-                  ),
-                  if (!linea.esCajon) ...[
-                    const SizedBox(height: 2),
-                    Text(
-                      '${linea.cantidadCargada.toStringAsFixed(0)}/${linea.cantidadObjetivo.toStringAsFixed(0)} ${linea.unidadSimbolo ?? ''}',
-                      style: const TextStyle(fontSize: 12, color: AppColors.muted),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-            if (modoConteo && !listo) ...[
-              IconButton(
-                onPressed: procesando || linea.cantidadCargada <= 0 ? null : onDecrementar,
-                icon: const Icon(Icons.remove_circle_outline),
-                iconSize: 22,
-              ),
-              IconButton(
-                onPressed: procesando ? null : onIncrementar,
-                icon: const Icon(Icons.add_circle_outline),
-                iconSize: 22,
-              ),
-            ] else
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: tocable && !procesando ? onTocar : null,
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            children: [
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-                decoration: BoxDecoration(
-                  color: listo ? AppColors.okBg : AppColors.waBg,
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Text(
-                  listo ? 'Listo' : 'Pendiente',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: listo ? AppColors.okTx : AppColors.waTx,
-                  ),
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(shape: BoxShape.circle, color: listo ? const Color(0xFF22C55E) : AppColors.accentSoft),
+                child: Icon(
+                  linea.esCajon ? Icons.all_inbox_outlined : Icons.inventory_2_outlined,
+                  size: 18,
+                  color: listo ? Colors.white : AppColors.accentDark,
                 ),
               ),
-          ],
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      linea.etiqueta,
+                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: AppColors.text),
+                    ),
+                    if (!linea.esCajon) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        '${linea.cantidadCargada.toStringAsFixed(0)}/${linea.cantidadObjetivo.toStringAsFixed(0)} ${linea.unidadSimbolo ?? ''}',
+                        style: const TextStyle(fontSize: 12, color: AppColors.muted),
+                      ),
+                    ],
+                    if (tocable) ...[
+                      const SizedBox(height: 2),
+                      const Text(
+                        'Sin código de barras — tocá para cargar 1',
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.accentDark),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              if (modoConteo && !listo) ...[
+                IconButton(
+                  onPressed: procesando || linea.cantidadCargada <= 0 ? null : onDecrementar,
+                  icon: const Icon(Icons.remove_circle_outline),
+                  iconSize: 22,
+                ),
+                IconButton(onPressed: procesando ? null : onIncrementar, icon: const Icon(Icons.add_circle_outline), iconSize: 22),
+              ] else
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                  decoration: BoxDecoration(color: listo ? AppColors.okBg : AppColors.waBg, borderRadius: BorderRadius.circular(999)),
+                  child: Text(
+                    listo ? 'Listo' : (tocable ? 'Tocar' : 'Pendiente'),
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: listo ? AppColors.okTx : AppColors.waTx),
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );
