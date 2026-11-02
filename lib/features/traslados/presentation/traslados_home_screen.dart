@@ -9,6 +9,7 @@ import '../../../core/errors/app_exception.dart';
 import '../../auth/application/auth_controller.dart';
 import '../application/traslados_providers.dart';
 import '../domain/traslado_models.dart';
+import 'traslados_ayuda.dart';
 import 'widgets/alerta_reacomodo_tile.dart';
 import 'widgets/traslado_tile.dart';
 
@@ -30,6 +31,13 @@ class TrasladosHomeScreen extends ConsumerWidget {
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Traslados'),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.help_outline),
+              tooltip: '¿Cómo funciona?',
+              onPressed: () => abrirAyudaTraslados(context),
+            ),
+          ],
           bottom: const TabBar(
             tabs: [Tab(text: 'Pendientes'), Tab(text: 'Historial')],
           ),

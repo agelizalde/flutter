@@ -18,6 +18,7 @@ class PedidoDetalle {
     this.idLugarEntrega,
     this.lugarEntregaNombre,
     this.vehiculoNombre,
+    this.esSimplificado = false,
   });
 
   factory PedidoDetalle.fromJson(Map<String, dynamic> j) => PedidoDetalle(
@@ -35,6 +36,7 @@ class PedidoDetalle {
     idLugarEntrega: j['id_lugar_entrega'] as int?,
     lugarEntregaNombre: j['lugar_entrega_nombre'] as String?,
     vehiculoNombre: j['vehiculo_nombre'] as String?,
+    esSimplificado: j['es_simplificado'] == true || j['es_simplificado'] == 1,
   );
 
   final int idPedido;
@@ -54,6 +56,11 @@ class PedidoDetalle {
   final int? idLugarEntrega;
   final String? lugarEntregaNombre;
   final String? vehiculoNombre;
+
+  /// Pedido nacido con "Pedido simplificado" (`pedidos.es_simplificado`, ver
+  /// `pedidos_simplificado_service.py`): `PedidoInfoScreen` lo muestra sin
+  /// lista de subpedidos y con el botón "Entregar pedido".
+  final bool esSimplificado;
 }
 
 /// Fila de `GET /pedidos/subpedidos/list?id_pedido=` (ver
@@ -103,6 +110,15 @@ class SubpedidoResumen {
 /// de estados que el usuario puede ver según su permiso (ver
 /// `ESTADOS_SEGUIMIENTO_DEPOSITO` / `pedidos_subpedidos.aprobar_entrega`),
 /// acá solo se muestra lo que llega.
+/// Móvil de entrega para mostrar en la lista de seguimiento: el nombre del
+/// vehículo, o la patente si no tiene nombre cargado.
+String? _vehiculoDisplay(Map<String, dynamic> j) {
+  final nombre = (j['vehiculo_nombre'] as String?)?.trim();
+  if (nombre != null && nombre.isNotEmpty) return nombre;
+  final patente = (j['vehiculo_patente'] as String?)?.trim();
+  return patente != null && patente.isNotEmpty ? patente : null;
+}
+
 class SubpedidoSeguimiento {
   SubpedidoSeguimiento({
     required this.idPedidoSubpedido,
@@ -115,6 +131,7 @@ class SubpedidoSeguimiento {
     this.sucursalTipoCodigo,
     this.sucursalTipoNombre,
     this.lugarEntregaNombre,
+    this.vehiculoNombre,
     this.eta,
     this.observacion,
     required this.totalItemsActivos,
@@ -135,7 +152,10 @@ class SubpedidoSeguimiento {
         sucursalTipoCodigo: j['sucursal_tipo_codigo'] as String?,
         sucursalTipoNombre: j['sucursal_tipo_nombre'] as String?,
         lugarEntregaNombre: j['lugar_entrega_nombre'] as String?,
-        eta: parseDateOrNull(j['eta']),
+        vehiculoNombre: _vehiculoDisplay(j),
+        // La ETA casi siempre se carga en el pedido y el subpedido queda en
+        // NULL: si el subpedido no tiene una propia, hereda la del pedido.
+        eta: parseDateOrNull(j['eta']) ?? parseDateOrNull(j['pedido_eta']),
         observacion: j['observacion'] as String?,
         totalItemsActivos: j['total_items_activos'] as int? ?? 0,
       );
@@ -156,6 +176,10 @@ class SubpedidoSeguimiento {
   /// Lugar de entrega del subpedido (`lugares_entrega`) — puede diferir de
   /// la sucursal del cliente (ej. un depósito o dirección puntual).
   final String? lugarEntregaNombre;
+
+  /// Móvil de entrega del subpedido (`vehiculos_entrega`): nombre, o la
+  /// patente si no tiene nombre.
+  final String? vehiculoNombre;
   final DateTime? eta;
   final String? observacion;
   final int totalItemsActivos;
@@ -176,6 +200,7 @@ class PedidoSinSubpedidos {
     this.sucursalTipoCodigo,
     this.sucursalTipoNombre,
     this.lugarEntregaNombre,
+    this.vehiculoNombre,
     this.eta,
   });
 
@@ -191,6 +216,7 @@ class PedidoSinSubpedidos {
         sucursalTipoCodigo: j['sucursal_tipo_codigo'] as String?,
         sucursalTipoNombre: j['sucursal_tipo_nombre'] as String?,
         lugarEntregaNombre: j['lugar_entrega_nombre'] as String?,
+        vehiculoNombre: _vehiculoDisplay(j),
         eta: parseDateOrNull(j['eta']),
       );
 
@@ -201,6 +227,9 @@ class PedidoSinSubpedidos {
   final String? sucursalTipoCodigo;
   final String? sucursalTipoNombre;
   final String? lugarEntregaNombre;
+
+  /// Móvil de entrega del pedido (`pedidos.id_vehiculo_entrega`).
+  final String? vehiculoNombre;
   final DateTime? eta;
 }
 
@@ -367,6 +396,7 @@ class PedidosConfigCreacion {
     this.permisoAduanaHabilitado = true,
     this.origenVacioHabilitado = true,
     this.origenEstandarHabilitado = true,
+    this.simplificadoDisponible = false,
   });
 
   factory PedidosConfigCreacion.fromJson(Map<String, dynamic> j) =>
@@ -389,6 +419,8 @@ class PedidosConfigCreacion {
         origenVacioHabilitado: j['origen_vacio_habilitado'] as bool? ?? true,
         origenEstandarHabilitado:
             j['origen_estandar_habilitado'] as bool? ?? true,
+        simplificadoDisponible:
+            j['simplificado_disponible'] as bool? ?? false,
       );
 
   final bool sucursalHabilitada;
@@ -409,6 +441,28 @@ class PedidosConfigCreacion {
   /// solo se leen los otros dos orígenes.
   final bool origenVacioHabilitado;
   final bool origenEstandarHabilitado;
+
+  /// "Pedido simplificado" prendido Y el almacén cumple sus requisitos
+  /// (sin picking/control/expedición, entrega simple) — lo resuelve el
+  /// servidor (`pedidos_config_get`). Con esto en true, `NuevoPedidoSheet`
+  /// pide el tipo de subpedido en vez del origen y crea con
+  /// `POST /pedidos/simplificado` (pedido + subpedido ya confirmado).
+  final bool simplificadoDisponible;
+}
+
+/// Fila de `GET /pedidos/subpedidos-tipos` (ver `subpedidos_tipo_service.py`)
+/// — picker "Tipo de subpedido" del pedido simplificado.
+class SubpedidoTipoSimple {
+  SubpedidoTipoSimple({required this.idPedidoSubpedidoTipo, required this.nombre});
+
+  factory SubpedidoTipoSimple.fromJson(Map<String, dynamic> j) =>
+      SubpedidoTipoSimple(
+        idPedidoSubpedidoTipo: j['id_pedido_subpedido_tipo'] as int,
+        nombre: j['nombre'] as String? ?? '',
+      );
+
+  final int idPedidoSubpedidoTipo;
+  final String nombre;
 }
 
 // =========================================================

@@ -8,8 +8,8 @@ import '../domain/notificacion_model.dart';
 import 'notificacion_navegador.dart';
 
 /// Tab "Notificaciones" del bottom nav — feed real del backend (SSE del
-/// lado web, acá pollea cada 15s vía `enableSilentRefresh`, no hay SSE en
-/// Flutter). Reemplaza al agregador de "Pendientes para vos" que vivía acá
+/// lado web; acá llega por el WS de notificaciones y se refresca con cada
+/// acción del usuario, ver `misNotificacionesProvider`). Reemplaza al agregador de "Pendientes para vos" que vivía acá
 /// antes (ese agregador se mudó a "ALERTAS PARA TI" en el Home, sigue
 /// existiendo — son cosas distintas: acá son eventos puntuales que ya
 /// pasaron, ahí son resúmenes de trabajo pendiente actual).

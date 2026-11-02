@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../app/theme.dart';
+import '../../../core/config/env.dart';
 import '../../../core/widgets/settings_group.dart';
 import '../../actualizacion/application/actualizacion_providers.dart';
 import '../../actualizacion/presentation/actualizacion_dialog.dart';
@@ -52,6 +53,12 @@ class ConfiguracionScreen extends ConsumerWidget {
                   titulo: 'Notificaciones push',
                   subtitulo: 'Qué módulos te avisan al teléfono',
                   onTap: () => context.push('/configuracion/notificaciones-push'),
+                ),
+                SettingsTile(
+                  icono: Icons.dns_outlined,
+                  titulo: 'Servidor y conexión',
+                  subtitulo: Env.fijoEnErp ? 'Fijo en red de la empresa' : 'Automático (erp. / public.)',
+                  onTap: () => context.push('/configurar-servidor'),
                 ),
               ],
             ),

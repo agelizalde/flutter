@@ -1,5 +1,8 @@
 import 'dart:io';
 
+import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+
 /// Prueba de conexión liviana para elegir entre `erp.riversupply.com.py`
 /// (red interna) y `public.riversupply.com.py` (túnel público) — ver
 /// `Env._erpOrigin`/`_publicOrigin` y el allow/deny de `nginx.conf`
@@ -27,6 +30,10 @@ class BackendResolver {
     // "disponible" -- imposible de diagnosticar a distancia.
     void Function(String detalle)? onResultado,
   }) async {
+    // `HttpClient` de dart:io no existe en web (tira "Unsupported
+    // operation: Platform._version") — en `flutter run -d chrome` se
+    // prueba con Dio, que usa el XHR del navegador.
+    if (kIsWeb) return _disponibleWeb(origen, timeout, codigosAdicionales, onResultado);
     final client = HttpClient()..connectionTimeout = timeout;
     try {
       final request = await client.getUrl(Uri.parse(origen)).timeout(timeout);
@@ -43,6 +50,29 @@ class BackendResolver {
       return false;
     } finally {
       client.close(force: true);
+    }
+  }
+
+  Future<bool> _disponibleWeb(
+    String origen,
+    Duration timeout,
+    Set<int> codigosAdicionales,
+    void Function(String detalle)? onResultado,
+  ) async {
+    final dio = Dio(BaseOptions(connectTimeout: timeout, receiveTimeout: timeout, validateStatus: (_) => true));
+    try {
+      final response = await dio.get<void>(origen);
+      final codigo = response.statusCode ?? 0;
+      final ok = (codigo >= 200 && codigo < 400) || codigosAdicionales.contains(codigo);
+      onResultado?.call(
+        '$origen -> HTTP $codigo${ok ? '' : ' (no cuenta como disponible)'}',
+      );
+      return ok;
+    } catch (e) {
+      onResultado?.call('$origen -> $e');
+      return false;
+    } finally {
+      dio.close(force: true);
     }
   }
 }

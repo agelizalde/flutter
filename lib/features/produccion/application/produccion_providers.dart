@@ -2,7 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:riverpod/legacy.dart';
 
 import '../../../core/providers.dart';
-import '../../../core/utils/silent_refresh.dart';
+import '../../../core/utils/refresco_por_accion.dart';
 import '../../auth/application/auth_controller.dart';
 import '../data/produccion_api.dart';
 import '../data/produccion_repository.dart';
@@ -20,7 +20,7 @@ final produccionRepositoryProvider = Provider<ProduccionRepository>((ref) {
 final produccionBusquedaRecetaProvider = StateProvider<String>((ref) => '');
 
 final recetasListadoProvider = FutureProvider.autoDispose<List<RecetaResumen>>((ref) {
-  enableSilentRefresh(ref);
+  refrescarEnAcciones(ref);
   final q = ref.watch(produccionBusquedaRecetaProvider).trim();
   return ref.watch(produccionRepositoryProvider).listarRecetas(q: q.isEmpty ? null : q);
 });
@@ -39,7 +39,7 @@ final etiquetaTemplateProvider = FutureProvider.family.autoDispose<EtiquetaTempl
 /// propias del usuario (creador u operario) para "retomar" sin exponer lo
 /// que otro compañero dejó en curso en el mismo almacén.
 final ordenesEnCursoProvider = FutureProvider.autoDispose<List<OrdenListItem>>((ref) async {
-  enableSilentRefresh(ref);
+  refrescarEnAcciones(ref);
   final usuario = await ref.watch(authControllerProvider.future);
   if (usuario?.idAlmacenSeleccionado == null) return const [];
   return ref
@@ -47,11 +47,11 @@ final ordenesEnCursoProvider = FutureProvider.autoDispose<List<OrdenListItem>>((
       .ordenesEnCurso(idAlmacen: usuario!.idAlmacenSeleccionado!, idUsuario: usuario.idUsuario);
 });
 
-/// Detalle "en vivo" de una orden — refresco silencioso cada 15s para que
-/// el cronómetro/estado se mantenga sincronizado si se pausa/reanuda desde
+/// Detalle "en vivo" de una orden — se refresca con cada acción del usuario
+/// (o al volver a la app) para que el estado se sincronice si se pausa/reanuda desde
 /// otro dispositivo (ej. la web).
 final ordenDetalleProvider = FutureProvider.family.autoDispose<OrdenProduccion, int>((ref, idOrden) {
-  enableSilentRefresh(ref);
+  refrescarEnAcciones(ref);
   return ref.watch(produccionRepositoryProvider).obtenerOrden(idOrden);
 });
 
@@ -59,7 +59,7 @@ final ordenDetalleProvider = FutureProvider.family.autoDispose<OrdenProduccion, 
 /// creador u operario, cualquier almacén) — accesible desde el ícono de
 /// opciones en `ProduccionHomeScreen`.
 final misProduccionesProvider = FutureProvider.autoDispose<List<OrdenListItem>>((ref) async {
-  enableSilentRefresh(ref);
+  refrescarEnAcciones(ref);
   final usuario = await ref.watch(authControllerProvider.future);
   if (usuario == null) return const [];
   return ref.watch(produccionRepositoryProvider).misProducciones(idUsuario: usuario.idUsuario);

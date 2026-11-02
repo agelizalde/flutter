@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,6 +11,13 @@ import '../../../core/utils/parsing.dart';
 import '../application/recepcion_oc_providers.dart';
 import '../application/recepcion_providers.dart';
 import '../domain/orden_compra_models.dart';
+
+// Azul de la app (`AppColors.accent`) para fondo, encabezado, píldoras y
+// botón; los tildes de ítem listo van en verde (`_verde`).
+const _pastel = Color(0xFFDBEAFE);
+const _fuerte = AppColors.accent;
+const _oscuro = AppColors.accentDark;
+const _verde = Color(0xFF16A34A);
 
 String _fmtQty(double v) {
   if (v == v.roundToDouble()) return v.toStringAsFixed(0);
@@ -33,9 +42,7 @@ DateTime? _fechaMinimaVencimiento(int? vidaUtilDias) {
 /// precargado con lo pendiente) para que la persona no confirme sin pesar.
 class _ItemFormState {
   _ItemFormState(this.item)
-    : cantidadCtrl = TextEditingController(
-        text: item.requierePesaje ? '' : _fmtQty(item.cantidadPendiente),
-      ),
+    : cantidadCtrl = TextEditingController(text: item.requierePesaje ? '' : _fmtQty(item.cantidadPendiente)),
       rechazadaCtrl = TextEditingController(text: '0'),
       observacionCtrl = TextEditingController(),
       observacionRechazoCtrl = TextEditingController(),
@@ -49,6 +56,11 @@ class _ItemFormState {
   final TextEditingController loteCtrl;
   DateTime? fechaVencimiento;
   DateTime? fechaFaenado;
+
+  /// Quitado a mano con la X de la tarjeta: no se recibe en esta recepción
+  /// (queda todo pendiente en la OC) y no se valida nada de lo cargado —
+  /// así un ítem que no vino no frena por lote/vencimiento/etc.
+  bool quitado = false;
 
   void dispose() {
     cantidadCtrl.dispose();
@@ -66,17 +78,28 @@ class _ItemFormState {
   /// continuar y queda todo pendiente en la OC.
   bool get noVino => cantidad == 0 && rechazada <= 0;
 
+  /// No entra en la recepción: quitado a mano o cargado 0/0.
+  bool get seQuita => quitado || noVino;
+
+  /// Ítem resuelto: entra en la recepción, tiene cantidad y pasa `validar()` — enciende el
+  /// tilde de la tarjeta y cuenta en "listos" del encabezado.
+  bool get listo => !seQuita && cantidad != null && validar() == null;
+
+  /// Todo lo que el usuario tipea en la tarjeta — para que el encabezado y
+  /// el tilde se actualicen al vuelo.
+  Listenable get cambios =>
+      Listenable.merge([cantidadCtrl, rechazadaCtrl, observacionCtrl, observacionRechazoCtrl, loteCtrl]);
+
   /// `null` si está todo bien, o el mensaje de error a mostrar.
   String? validar() {
+    if (quitado) return null;
     final nombre = item.productoNombre;
     final pendiente = item.cantidadPendiente;
     final cantidad = this.cantidad;
     final rechazada = this.rechazada;
 
     if (cantidad == null || cantidad < 0 || rechazada < 0) {
-      return item.requierePesaje
-          ? '$nombre: pesalo e ingresá el peso real.'
-          : '$nombre: ingresá una cantidad válida.';
+      return item.requierePesaje ? '$nombre: pesalo e ingresá el peso real.' : '$nombre: ingresá una cantidad válida.';
     }
     if (noVino) return null;
     // Ya no se valida "superar lo pendiente" acá en ningún caso — esa
@@ -182,10 +205,10 @@ class _RecibirOcItemsScreenState extends ConsumerState<RecibirOcItemsScreen> {
         return;
       }
     }
-    if (items.every((item) => _forms[item.idOcItem]!.noVino)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No cargaste nada para recibir ni rechazar.')),
-      );
+    if (items.every((item) => _forms[item.idOcItem]!.seQuita)) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('No quedó ningún ítem para recibir ni rechazar.')));
       return;
     }
 
@@ -203,7 +226,7 @@ class _RecibirOcItemsScreenState extends ConsumerState<RecibirOcItemsScreen> {
       for (final importado in resultado.itemsImportados) {
         final form = _forms[importado.idOcItem];
         if (form == null) continue;
-        if (form.noVino) {
+        if (form.seQuita) {
           await repo.quitarItem(idRecepcionItem: importado.idRecepcionItem, expectedVersion: 1);
           continue;
         }
@@ -218,8 +241,9 @@ class _RecibirOcItemsScreenState extends ConsumerState<RecibirOcItemsScreen> {
           fechaVencimiento: form.fechaVencimiento,
           fechaFaenado: form.fechaFaenado,
           observacion: form.observacionCtrl.text.trim().isEmpty ? null : form.observacionCtrl.text.trim(),
-          observacionRechazo:
-              form.observacionRechazoCtrl.text.trim().isEmpty ? null : form.observacionRechazoCtrl.text.trim(),
+          observacionRechazo: form.observacionRechazoCtrl.text.trim().isEmpty
+              ? null
+              : form.observacionRechazoCtrl.text.trim(),
         );
 
         if (itemResultado.diferenciaPeso?.pendiente == true) {
@@ -251,9 +275,7 @@ class _RecibirOcItemsScreenState extends ConsumerState<RecibirOcItemsScreen> {
               'No vas a poder confirmar la recepción hasta que se resuelvan desde '
               'Firmas · Solicitudes.',
             ),
-            actions: [
-              TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Entendido')),
-            ],
+            actions: [TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Entendido'))],
           ),
         );
       }
@@ -287,7 +309,8 @@ class _RecibirOcItemsScreenState extends ConsumerState<RecibirOcItemsScreen> {
     final borradorAsync = ref.watch(recepcionOcBorradorExistenteProvider(widget.idOc));
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Ítems a recibir')),
+      backgroundColor: AppColors.pageBg,
+      appBar: AppBar(title: const Text('Ítems a recibir'), backgroundColor: _pastel),
       // Si la OC ya tiene una recepción en BORRADOR (p. ej. esperando que
       // se apruebe/firme un exceso de cantidad), hay que continuar esa en
       // vez de dejar que se cree otra y se duplique la cantidad recibida
@@ -295,9 +318,8 @@ class _RecibirOcItemsScreenState extends ConsumerState<RecibirOcItemsScreen> {
       // falla, no bloqueamos: el backend igual lo rechaza con 409 como red
       // de seguridad (ver el catch de `_continuar`).
       body: borradorAsync.maybeWhen(
-        data: (borrador) => borrador != null
-            ? _BorradorExistenteAviso(idRecepcion: borrador.idRecepcion)
-            : _buildItems(async),
+        data: (borrador) =>
+            borrador != null ? _BorradorExistenteAviso(idRecepcion: borrador.idRecepcion) : _buildItems(async),
         orElse: () => _buildItems(async),
       ),
     );
@@ -305,47 +327,68 @@ class _RecibirOcItemsScreenState extends ConsumerState<RecibirOcItemsScreen> {
 
   Widget _buildItems(AsyncValue<OrdenCompraDetalle> async) {
     return async.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Text(describeError(e), textAlign: TextAlign.center, style: const TextStyle(color: AppColors.erTx)),
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, _) => Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+            describeError(e),
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: AppColors.erTx),
           ),
         ),
-        data: (detalle) {
-          if (detalle.items.isEmpty) {
-            return const Center(
-              child: Padding(
-                padding: EdgeInsets.all(24),
-                child: Text(
-                  'Esta OC no tiene ítems pendientes para recibir.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: AppColors.muted),
-                ),
+      ),
+      data: (detalle) {
+        if (detalle.items.isEmpty) {
+          return const Center(
+            child: Padding(
+              padding: EdgeInsets.all(24),
+              child: Text(
+                'Esta OC no tiene ítems pendientes para recibir.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: AppColors.muted),
               ),
-            );
-          }
+            ),
+          );
+        }
 
-          _prepararForms(detalle.items);
+        _prepararForms(detalle.items);
+        final forms = [for (final item in detalle.items) _forms[item.idOcItem]!];
 
-          return Column(
+        return DecoratedBox(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [_pastel, AppColors.pageBg],
+              stops: [0, 0.4],
+            ),
+          ),
+          child: Column(
             children: [
               Expanded(
                 child: ListView(
-                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
                   children: [
-                    Text(
-                      detalle.header.codigo,
-                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: AppColors.text),
+                    ListenableBuilder(
+                      listenable: Listenable.merge([for (final f in forms) f.cambios]),
+                      builder: (context, _) => _EncabezadoOc(
+                        codigo: detalle.header.codigo,
+                        proveedor: detalle.header.proveedorNombre,
+                        listos: forms.where((f) => f.listo).length,
+                        total: forms.where((f) => !f.seQuita).length,
+                      ),
                     ),
-                    Text(
-                      detalle.header.proveedorNombre,
-                      style: const TextStyle(fontSize: 13, color: AppColors.muted),
-                    ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 12),
+                    _ResumenQuitados(total: detalle.items.length, quitados: forms.where((f) => f.quitado).length),
+                    const SizedBox(height: 12),
                     for (final item in detalle.items) ...[
                       _OcItemCard(
                         form: _forms[item.idOcItem]!,
+                        onToggleQuitar: () => setState(() {
+                          final form = _forms[item.idOcItem]!;
+                          form.quitado = !form.quitado;
+                        }),
                         onElegirVencimiento: () => _elegirFecha(_forms[item.idOcItem]!, esVencimiento: true),
                         onElegirFaena: () => _elegirFecha(_forms[item.idOcItem]!, esVencimiento: false),
                       ),
@@ -356,21 +399,31 @@ class _RecibirOcItemsScreenState extends ConsumerState<RecibirOcItemsScreen> {
               ),
               SafeArea(
                 minimum: const EdgeInsets.fromLTRB(20, 0, 20, 16),
-                child: ElevatedButton(
-                  onPressed: _guardando ? null : () => _continuar(detalle.items),
-                  child: _guardando
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                        )
-                      : const Text('Continuar'),
+                child: SizedBox(
+                  width: double.infinity,
+                  height: 54,
+                  child: FilledButton(
+                    onPressed: _guardando ? null : () => _continuar(detalle.items),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: _oscuro,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
+                    ),
+                    child: _guardando
+                        ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                          )
+                        : const Text('Continuar', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                  ),
                 ),
               ),
             ],
-          );
-        },
-      );
+          ),
+        );
+      },
+    );
   }
 }
 
@@ -421,11 +474,13 @@ class _BorradorExistenteAviso extends StatelessWidget {
 class _OcItemCard extends StatefulWidget {
   const _OcItemCard({
     required this.form,
+    required this.onToggleQuitar,
     required this.onElegirVencimiento,
     required this.onElegirFaena,
   });
 
   final _ItemFormState form;
+  final VoidCallback onToggleQuitar;
   final VoidCallback onElegirVencimiento;
   final VoidCallback onElegirFaena;
 
@@ -437,14 +492,12 @@ class _OcItemCardState extends State<_OcItemCard> {
   @override
   void initState() {
     super.initState();
-    widget.form.cantidadCtrl.addListener(_onChanged);
-    widget.form.rechazadaCtrl.addListener(_onChanged);
+    widget.form.cambios.addListener(_onChanged);
   }
 
   @override
   void dispose() {
-    widget.form.cantidadCtrl.removeListener(_onChanged);
-    widget.form.rechazadaCtrl.removeListener(_onChanged);
+    widget.form.cambios.removeListener(_onChanged);
     super.dispose();
   }
 
@@ -464,133 +517,416 @@ class _OcItemCardState extends State<_OcItemCard> {
     final pideDatosStock = cantidad > 0 || form.cantidad == null;
     final minVenc = _fechaMinimaVencimiento(item.vidaUtilDias);
 
+    if (form.quitado) {
+      return _ItemQuitadoCard(item: item, onVolverAgregar: widget.onToggleQuitar);
+    }
+
+    final listo = form.listo;
+    final tema = Theme.of(context);
+    // Campos blancos sobre la tarjeta (que se tiñe de pastel al quedar
+    // lista) y foco en azul.
+    final temaCampos = tema.copyWith(
+      colorScheme: tema.colorScheme.copyWith(primary: _oscuro),
+      inputDecorationTheme: tema.inputDecorationTheme.copyWith(
+        fillColor: listo ? Colors.white : AppColors.soft,
+        floatingLabelStyle: const TextStyle(color: _oscuro, fontWeight: FontWeight.w700),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: _fuerte, width: 1.6),
+        ),
+      ),
+    );
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOutCubic,
+      decoration: BoxDecoration(
+        color: listo ? _pastel : Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: listo ? _fuerte.withValues(alpha: 0.35) : Colors.transparent, width: 1.2),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 14, offset: const Offset(0, 5))],
+      ),
+      padding: const EdgeInsets.fromLTRB(14, 12, 6, 14),
+      child: Theme(
+        data: temaCampos,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                _TildeItem(listo: listo),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        item.productoNombre,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5, color: AppColors.text),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'Pendiente: ${_fmtQty(pendiente)} ${item.unidadSimbolo}${item.requierePesaje ? ' · Pesable' : ''}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: listo ? _oscuro : AppColors.muted,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                _CantidadPill(
+                  texto: form.cantidad == null ? '—' : '${_fmtQty(form.cantidad!)} ${item.unidadSimbolo}',
+                  listo: listo,
+                ),
+                IconButton(
+                  onPressed: widget.onToggleQuitar,
+                  tooltip: 'Quitar de esta recepción',
+                  visualDensity: VisualDensity.compact,
+                  icon: const Icon(Icons.close, size: 20, color: AppColors.muted),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: form.cantidadCtrl,
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          decoration: InputDecoration(
+                            labelText: item.requierePesaje ? 'Peso real (${item.unidadSimbolo})' : 'Cantidad a recibir',
+                            helperText: item.requierePesaje ? 'Pesalo y cargá el valor real' : null,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: TextField(
+                          controller: form.rechazadaCtrl,
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          decoration: const InputDecoration(labelText: 'Rechazada'),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (noVino) ...[
+                    const SizedBox(height: 8),
+                    const Text(
+                      'No vino: se quita de esta recepción y queda pendiente en la OC.',
+                      style: TextStyle(fontSize: 11.5, color: AppColors.waTx, fontWeight: FontWeight.w600),
+                    ),
+                  ],
+                  if (requiereMotivoRechazo) ...[
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: form.observacionRechazoCtrl,
+                      decoration: const InputDecoration(labelText: 'Motivo del rechazo *'),
+                    ),
+                  ],
+                  if (requiereObservacion) ...[
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: form.observacionCtrl,
+                      decoration: const InputDecoration(labelText: '¿Por qué llega menos? *'),
+                    ),
+                  ],
+                  if (pideDatosStock && item.requiereLote) ...[
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: form.loteCtrl,
+                      decoration: const InputDecoration(labelText: 'Lote proveedor *'),
+                    ),
+                  ],
+                  if (pideDatosStock && item.requiereVencimiento) ...[
+                    const SizedBox(height: 10),
+                    _FechaField(
+                      label: 'Fecha de vencimiento *',
+                      fecha: form.fechaVencimiento,
+                      onTap: widget.onElegirVencimiento,
+                    ),
+                    if (minVenc != null) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        'Vida útil ${item.vidaUtilDias} días · mín. ${formatFecha(minVenc)}',
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          color: form.fechaVencimiento != null && form.fechaVencimiento!.isBefore(minVenc)
+                              ? AppColors.erTx
+                              : AppColors.muted,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ],
+                  if (pideDatosStock && item.requiereFaena) ...[
+                    const SizedBox(height: 10),
+                    _FechaField(label: 'Fecha de faenado *', fecha: form.fechaFaenado, onTap: widget.onElegirFaena),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Encabezado de la OC: código, proveedor y cuántos ítems ya están listos
+/// (el contador da un saltito cada vez que cambia), con barra de avance.
+class _EncabezadoOc extends StatelessWidget {
+  const _EncabezadoOc({required this.codigo, required this.proveedor, required this.listos, required this.total});
+
+  final String codigo;
+  final String proveedor;
+  final int listos;
+  final int total;
+
+  @override
+  Widget build(BuildContext context) {
+    final completo = total > 0 && listos == total;
+
     return Container(
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 12, offset: const Offset(0, 4)),
-        ],
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [BoxShadow(color: _fuerte.withValues(alpha: 0.10), blurRadius: 18, offset: const Offset(0, 6))],
       ),
-      padding: const EdgeInsets.all(14),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
             children: [
               Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(color: AppColors.accentSoft, borderRadius: BorderRadius.circular(10)),
-                child: const Icon(Icons.inventory_2_outlined, color: AppColors.accentDark, size: 18),
+                width: 46,
+                height: 46,
+                decoration: const BoxDecoration(color: _fuerte, shape: BoxShape.circle),
+                child: const Icon(Icons.receipt_long_outlined, color: Colors.white, size: 22),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      item.productoNombre,
+                      codigo,
+                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: AppColors.ink),
+                    ),
+                    Text(
+                      proveedor,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: AppColors.text),
+                      style: const TextStyle(fontSize: 13, color: AppColors.muted),
                     ),
-                    if (item.requierePesaje)
-                      const Text(
-                        'Pesable',
-                        style: TextStyle(fontSize: 11, color: AppColors.accentDark, fontWeight: FontWeight.w700),
-                      ),
                   ],
                 ),
               ),
-              Text(
-                'Pend. ${_fmtQty(pendiente)} ${item.unidadSimbolo}',
-                style: const TextStyle(fontSize: 12, color: AppColors.muted, fontWeight: FontWeight.w600),
-              ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 14),
           Row(
             children: [
-              Expanded(
-                child: TextField(
-                  controller: form.cantidadCtrl,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  decoration: InputDecoration(
-                    labelText: item.requierePesaje
-                        ? 'Peso real (${item.unidadSimbolo})'
-                        : 'Cantidad a recibir',
-                    helperText: item.requierePesaje ? 'Pesalo y cargá el valor real' : null,
+              const Text(
+                'ÍTEMS LISTOS',
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: AppColors.muted, letterSpacing: 1),
+              ),
+              const Spacer(),
+              TweenAnimationBuilder<double>(
+                key: ValueKey(listos),
+                tween: Tween(begin: 0, end: 1),
+                duration: const Duration(milliseconds: 420),
+                builder: (context, v, child) => Transform.scale(scale: 1 + 0.25 * math.sin(math.pi * v), child: child),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 250),
+                  padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: completo ? _fuerte : _pastel,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    '$listos/$total',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                      color: completo ? Colors.white : _oscuro,
+                    ),
                   ),
                 ),
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: TextField(
-                  controller: form.rechazadaCtrl,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(labelText: 'Rechazada'),
-                ),
-              ),
             ],
           ),
-          if (noVino) ...[
-            const SizedBox(height: 8),
-            const Text(
-              'No vino: se quita de esta recepción y queda pendiente en la OC.',
-              style: TextStyle(fontSize: 11.5, color: AppColors.waTx, fontWeight: FontWeight.w600),
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: TweenAnimationBuilder<double>(
+              tween: Tween(end: total > 0 ? listos / total : 0),
+              duration: const Duration(milliseconds: 400),
+              curve: Curves.easeOutCubic,
+              builder: (context, v, _) =>
+                  LinearProgressIndicator(value: v, minHeight: 6, backgroundColor: _pastel, color: _fuerte),
             ),
-          ],
-          if (requiereMotivoRechazo) ...[
-            const SizedBox(height: 10),
-            TextField(
-              controller: form.observacionRechazoCtrl,
-              decoration: const InputDecoration(labelText: 'Motivo del rechazo *'),
-            ),
-          ],
-          if (requiereObservacion) ...[
-            const SizedBox(height: 10),
-            TextField(
-              controller: form.observacionCtrl,
-              decoration: const InputDecoration(labelText: '¿Por qué llega menos? *'),
-            ),
-          ],
-          if (pideDatosStock && item.requiereLote) ...[
-            const SizedBox(height: 10),
-            TextField(
-              controller: form.loteCtrl,
-              decoration: const InputDecoration(labelText: 'Lote proveedor *'),
-            ),
-          ],
-          if (pideDatosStock && item.requiereVencimiento) ...[
-            const SizedBox(height: 10),
-            _FechaField(
-              label: 'Fecha de vencimiento *',
-              fecha: form.fechaVencimiento,
-              onTap: widget.onElegirVencimiento,
-            ),
-            if (minVenc != null) ...[
-              const SizedBox(height: 4),
-              Text(
-                'Vida útil ${item.vidaUtilDias} días · mín. ${formatFecha(minVenc)}',
-                style: TextStyle(
-                  fontSize: 11.5,
-                  color: form.fechaVencimiento != null && form.fechaVencimiento!.isBefore(minVenc)
-                      ? AppColors.erTx
-                      : AppColors.muted,
-                  fontWeight: FontWeight.w600,
-                ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Círculo de estado del ítem: vacío mientras falta algo, tilde verde (con
+/// rebote) cuando queda listo.
+class _TildeItem extends StatelessWidget {
+  const _TildeItem({required this.listo});
+
+  final bool listo;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 550),
+      transitionBuilder: (child, anim) => ScaleTransition(
+        scale: CurvedAnimation(parent: anim, curve: Curves.elasticOut),
+        child: child,
+      ),
+      child: Container(
+        key: ValueKey(listo),
+        width: 30,
+        height: 30,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: listo ? _verde : Colors.transparent,
+          border: Border.all(color: listo ? _verde : AppColors.borderStrong, width: 2),
+        ),
+        child: listo ? const Icon(Icons.check, size: 18, color: Colors.white) : null,
+      ),
+    );
+  }
+}
+
+/// Píldora con la cantidad cargada — gris mientras falta algo, azul cuando
+/// el ítem queda listo.
+class _CantidadPill extends StatelessWidget {
+  const _CantidadPill({required this.texto, required this.listo});
+
+  final String texto;
+  final bool listo;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 250),
+      constraints: const BoxConstraints(minWidth: 56),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: listo ? _fuerte : AppColors.soft,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: listo ? _fuerte : AppColors.border),
+      ),
+      child: Text(
+        texto,
+        style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: listo ? Colors.white : AppColors.faint),
+      ),
+    );
+  }
+}
+
+/// "Recibís N de M ítems" — solo aparece cuando hay algo quitado, para que
+/// quede claro que lo quitado no se pierde: sigue pendiente en la OC.
+class _ResumenQuitados extends StatelessWidget {
+  const _ResumenQuitados({required this.total, required this.quitados});
+
+  final int total;
+  final int quitados;
+
+  @override
+  Widget build(BuildContext context) {
+    if (quitados == 0) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(horizontal: 4),
+        child: Row(
+          children: [
+            Icon(Icons.info_outline, size: 15, color: _oscuro),
+            SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                'Tocá la X para quitar lo que no vas a recibir ahora.',
+                style: TextStyle(fontSize: 12, color: _oscuro, fontWeight: FontWeight.w600),
               ),
-            ],
-          ],
-          if (pideDatosStock && item.requiereFaena) ...[
-            const SizedBox(height: 10),
-            _FechaField(
-              label: 'Fecha de faenado *',
-              fecha: form.fechaFaenado,
-              onTap: widget.onElegirFaena,
             ),
           ],
+        ),
+      );
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(color: AppColors.waBg, borderRadius: BorderRadius.circular(14)),
+      child: Text(
+        'Recibís ${total - quitados} de $total ítems · $quitados quitado(s), quedan pendientes en la OC.',
+        style: const TextStyle(fontSize: 12, color: AppColors.waTx, fontWeight: FontWeight.w600),
+      ),
+    );
+  }
+}
+
+/// Tarjeta compacta de un ítem quitado: no pide nada, solo deja volver a
+/// agregarlo (conserva lo que se había cargado).
+class _ItemQuitadoCard extends StatelessWidget {
+  const _ItemQuitadoCard({required this.item, required this.onVolverAgregar});
+
+  final OrdenCompraItemDetalle item;
+  final VoidCallback onVolverAgregar;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.6),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.border),
+      ),
+      padding: const EdgeInsets.fromLTRB(14, 10, 6, 10),
+      child: Row(
+        children: [
+          const Icon(Icons.remove_circle_outline, size: 22, color: AppColors.faint),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  item.productoNombre,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.muted,
+                    decoration: TextDecoration.lineThrough,
+                  ),
+                ),
+                const Text(
+                  'No se recibe ahora · queda pendiente en la OC',
+                  style: TextStyle(fontSize: 11.5, color: AppColors.faint),
+                ),
+              ],
+            ),
+          ),
+          TextButton(
+            onPressed: onVolverAgregar,
+            style: TextButton.styleFrom(foregroundColor: _oscuro),
+            child: const Text('Agregar', style: TextStyle(fontWeight: FontWeight.w800)),
+          ),
         ],
       ),
     );

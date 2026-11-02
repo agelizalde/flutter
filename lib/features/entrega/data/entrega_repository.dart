@@ -16,7 +16,7 @@ class EntregaRepository {
 
   Future<List<EntregaItem>> entregaItems(int idPedidoSubpedido) => _api.entregaItems(idPedidoSubpedido);
 
-  Future<EntregaConfig> entregaConfig() => _api.entregaConfig();
+  Future<EntregaConfig> entregaConfig(int idPedidoSubpedido) => _api.entregaConfig(idPedidoSubpedido);
 
   Future<PedidoEntregaResumen> documentoEntrega(int idPedidoSubpedido) => _api.documentoEntrega(idPedidoSubpedido);
 
@@ -37,6 +37,11 @@ class EntregaRepository {
     faltantes: faltantes,
     fotos: fotos,
   );
+
+  Future<List<VehiculoEntregaOpcion>> vehiculos() => _api.vehiculos();
+
+  Future<void> cambiarVehiculo(int idPedidoSubpedido, {required int idVehiculo}) =>
+      _api.cambiarVehiculo(idPedidoSubpedido, idVehiculo: idVehiculo);
 
   Future<void> confirmarEntregaSimple(int idPedidoSubpedido, {required int expectedVersion}) =>
       _api.confirmarEntregaSimple(idPedidoSubpedido, expectedVersion: expectedVersion);

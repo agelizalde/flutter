@@ -2,7 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/notificaciones_ws_provider.dart';
 import '../../../core/providers.dart';
-import '../../../core/utils/silent_refresh.dart';
+import '../../../core/utils/refresco_por_accion.dart';
 import '../data/picking_control_api.dart';
 import '../data/picking_control_repository.dart';
 import '../domain/picking_control_models.dart';
@@ -24,13 +24,13 @@ bool _esEventoControlAsignado(Map<String, dynamic> evento) {
       (evento['tipo'] == 'CONTROL_ASIGNADO' || evento['tipo'] == 'CONTROL_REASIGNADO');
 }
 
-/// Lista de subpedidos disponibles para controlar. Con `enableSilentRefresh`
-/// como red de respaldo (20s) y, además, invalidación instantánea apenas
-/// llega un evento de asignación por `notificacionesWsProvider` — así el
-/// controlador ve aparecer cajones recién asignados sin esperar el poll ni
-/// hacer pull-to-refresh a mano.
+/// Lista de subpedidos disponibles para controlar. Se refresca con cada
+/// acción del usuario (`refrescarEnAcciones`) y, además, apenas llega un
+/// evento de asignación por `notificacionesWsProvider` — así el
+/// controlador ve aparecer cajones recién asignados sin hacer
+/// pull-to-refresh a mano.
 final subpedidosControlProvider = FutureProvider.autoDispose<List<SubpedidoControl>>((ref) {
-  enableSilentRefresh(ref, interval: const Duration(seconds: 20));
+  refrescarEnAcciones(ref);
 
   ref.listen(notificacionesWsProvider, (previous, next) {
     final evento = next.value;

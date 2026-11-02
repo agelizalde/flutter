@@ -3,7 +3,7 @@ import 'package:riverpod/legacy.dart';
 
 import '../../../core/network/notificaciones_ws_provider.dart';
 import '../../../core/providers.dart';
-import '../../../core/utils/silent_refresh.dart';
+import '../../../core/utils/refresco_por_accion.dart';
 import '../../auth/application/auth_controller.dart';
 import '../../stock/application/stock_providers.dart'
     show productosApiProvider, proveedoresApiProvider;
@@ -52,10 +52,10 @@ final recepcionRepositoryProvider = Provider<RecepcionRepository>((ref) {
 /// Piloto de tiempo real: escucha `notificacionesWsProvider` y se invalida
 /// apenas llega un evento `RECEPCION` (`RECEPCION_CONTROLADA`, cuando
 /// alguien controla una recepción que yo recibí — ver
-/// `recepcion_control_service.py`), en vez de esperar el próximo poll.
-/// `enableSilentRefresh` con intervalo largo queda como red de respaldo.
+/// `recepcion_control_service.py`). Además se refresca con cada acción del
+/// usuario (`refrescarEnAcciones`).
 final recepcionesRecientesProvider = FutureProvider.autoDispose<List<Recepcion>>((ref) async {
-  enableSilentRefresh(ref, interval: const Duration(seconds: 60));
+  refrescarEnAcciones(ref);
 
   ref.listen(notificacionesWsProvider, (previous, next) {
     final evento = next.value;
@@ -107,7 +107,7 @@ final recepcionesRecientesProvider = FutureProvider.autoDispose<List<Recepcion>>
 /// mismo recibió.
 final recepcionListadoProvider =
     FutureProvider.family.autoDispose<List<Recepcion>, (String query, String? estado)>((ref, params) async {
-  enableSilentRefresh(ref, interval: const Duration(seconds: 60));
+  refrescarEnAcciones(ref);
 
   final (query, estadoFijo) = params;
 
@@ -173,7 +173,7 @@ final almacenesProvider = FutureProvider.autoDispose<List<AlmacenSimple>>((
 
 final recepcionDetalleProvider = FutureProvider.family
     .autoDispose<RecepcionDetalle, int>((ref, idRecepcion) {
-      enableSilentRefresh(ref);
+      refrescarEnAcciones(ref);
       return ref.watch(recepcionRepositoryProvider).obtenerDetalle(idRecepcion);
     });
 

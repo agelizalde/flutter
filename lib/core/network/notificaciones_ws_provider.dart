@@ -16,7 +16,7 @@ import '../providers.dart';
 /// `firmas_providers.dart` para el primer caso de uso.
 ///
 /// `autoDispose`: se conecta solo mientras algo lo esté mirando (misma
-/// filosofía que `enableSilentRefresh`) y se desconecta solo al cerrar la
+/// filosofía que `refrescarEnAcciones`) y se desconecta solo al cerrar la
 /// pantalla. Reconecta con backoff exponencial (1s → 30s tope) ante
 /// cualquier corte — caída de red, backend reiniciando, etc.
 final notificacionesWsProvider = StreamProvider.autoDispose<Map<String, dynamic>>((ref) async* {

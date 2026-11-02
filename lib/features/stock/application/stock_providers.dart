@@ -3,7 +3,7 @@ import 'package:riverpod/legacy.dart';
 
 import '../../../core/network/notificaciones_ws_provider.dart';
 import '../../../core/providers.dart';
-import '../../../core/utils/silent_refresh.dart';
+import '../../../core/utils/refresco_por_accion.dart';
 import '../../recepcion/application/recepcion_providers.dart' show ubicacionesApiProvider;
 import '../../recepcion/domain/recepcion_models.dart' show UbicacionSimple;
 import '../data/productos_api.dart';
@@ -35,6 +35,7 @@ final stockRepositoryProvider = Provider<StockRepository>((ref) {
     ref.watch(stockApiProvider),
     ref.watch(productosApiProvider),
     ref.watch(proveedoresApiProvider),
+    ref.watch(ubicacionesApiProvider),
   );
 });
 
@@ -55,7 +56,7 @@ final stockSearchQueryProvider = StateProvider<String>((ref) => '');
 /// que no hay forma de filtrar sin sobre-invalidar igual.
 final productoResultsProvider =
     FutureProvider.autoDispose<List<ProductoConStock>>((ref) {
-      enableSilentRefresh(ref, interval: const Duration(seconds: 60));
+      refrescarEnAcciones(ref);
 
       ref.listen(notificacionesWsProvider, (previous, next) {
         final evento = next.value;
@@ -69,7 +70,7 @@ final productoResultsProvider =
 
 final ubicacionResultsProvider =
     FutureProvider.autoDispose<List<UbicacionStock>>((ref) {
-      enableSilentRefresh(ref, interval: const Duration(seconds: 60));
+      refrescarEnAcciones(ref);
 
       ref.listen(notificacionesWsProvider, (previous, next) {
         final evento = next.value;
@@ -83,7 +84,7 @@ final ubicacionResultsProvider =
 
 final proveedorResultsProvider =
     FutureProvider.autoDispose<List<ProveedorSimple>>((ref) {
-      enableSilentRefresh(ref);
+      refrescarEnAcciones(ref);
       final q = ref.watch(stockSearchQueryProvider).trim();
       if (q.isEmpty) return Future.value(const []);
       return ref.watch(stockRepositoryProvider).buscarProveedores(q);
@@ -91,7 +92,7 @@ final proveedorResultsProvider =
 
 final existenciasPorUbicacionProvider = FutureProvider.family
     .autoDispose<List<ExistenciaStock>, int>((ref, idUbicacion) {
-      enableSilentRefresh(ref, interval: const Duration(seconds: 60));
+      refrescarEnAcciones(ref);
 
       ref.listen(notificacionesWsProvider, (previous, next) {
         final evento = next.value;
@@ -107,7 +108,7 @@ final existenciasPorUbicacionProvider = FutureProvider.family
 
 final productosPorProveedorProvider = FutureProvider.family
     .autoDispose<List<ProductoSimple>, int>((ref, idProveedor) {
-      enableSilentRefresh(ref);
+      refrescarEnAcciones(ref);
       return ref
           .watch(stockRepositoryProvider)
           .productosDeProveedor(idProveedor);
@@ -115,7 +116,7 @@ final productosPorProveedorProvider = FutureProvider.family
 
 final productoDetalleProvider = FutureProvider.family
     .autoDispose<ProductoStockDetalle, int>((ref, idProducto) {
-      enableSilentRefresh(ref, interval: const Duration(seconds: 60));
+      refrescarEnAcciones(ref);
 
       ref.listen(notificacionesWsProvider, (previous, next) {
         final evento = next.value;
@@ -127,11 +128,18 @@ final productoDetalleProvider = FutureProvider.family
       return ref.watch(stockRepositoryProvider).detalleCompleto(idProducto);
     });
 
+/// Últimas 3 compras (OC APROBADA/CERRADA) del producto — sheet "$" del
+/// detalle. Solo se pide al abrir el sheet, no al cargar la ficha.
+final ultimasComprasProvider = FutureProvider.family
+    .autoDispose<List<CompraProducto>, int>((ref, idProducto) {
+      return ref.watch(stockRepositoryProvider).ultimasCompras(idProducto);
+    });
+
 /// Ubicaciones dentro de una zona — paso "escanear zona" del buscador (ver
 /// `ZonaUbicacionesScreen`). Catálogo completo (`UbicacionesApi.deZona`),
 /// no la vista atada a stock.
 final ubicacionesDeZonaProvider = FutureProvider.family
     .autoDispose<List<UbicacionSimple>, int>((ref, idZona) {
-      enableSilentRefresh(ref);
+      refrescarEnAcciones(ref);
       return ref.watch(ubicacionesApiProvider).deZona(idZona);
     });

@@ -7,6 +7,11 @@ import '../../../core/utils/parsing.dart';
 /// como responsable/chofer asignado a esta entrega (o cualquiera, si es
 /// TERCERIZADO y no tiene responsable propio) — es el único que puede
 /// confirmarla (`confirmar_entrega` lo vuelve a validar server-side).
+///
+/// También llegan los pedidos simplificados (`esSimplificado`) en
+/// CONFIRMADO: esos no pasan por EN_ENTREGA y se entregan con un click
+/// (`POST /pedidos/simplificado/{id}/entregar`), por PEDIDO, no por
+/// subpedido.
 class SubpedidoEnEntrega {
   SubpedidoEnEntrega({
     required this.idPedidoSubpedido,
@@ -23,6 +28,10 @@ class SubpedidoEnEntrega {
     this.metodoEntrega,
     this.responsablesNombres,
     this.asignadoAMi = false,
+    this.esSimplificado = false,
+    this.idVehiculoEntrega,
+    this.vehiculoNombre,
+    this.vehiculoPatente,
   });
 
   factory SubpedidoEnEntrega.fromJson(Map<String, dynamic> j) => SubpedidoEnEntrega(
@@ -40,6 +49,10 @@ class SubpedidoEnEntrega {
     metodoEntrega: j['metodo_entrega'] as String?,
     responsablesNombres: j['responsables_nombres'] as String?,
     asignadoAMi: j['asignado_a_mi'] as bool? ?? false,
+    esSimplificado: j['es_simplificado'] as bool? ?? false,
+    idVehiculoEntrega: j['id_vehiculo_entrega'] as int?,
+    vehiculoNombre: j['vehiculo_nombre'] as String?,
+    vehiculoPatente: j['vehiculo_patente'] as String?,
   );
 
   final int idPedidoSubpedido;
@@ -61,6 +74,24 @@ class SubpedidoEnEntrega {
   final String? metodoEntrega;
   final String? responsablesNombres;
   final bool asignadoAMi;
+  final bool esSimplificado;
+
+  /// Móvil con el que sale a entregar (solo reparto PROPIO) — se puede
+  /// cambiar desde la pantalla de entrega (`POST .../entrega/vehiculo`).
+  final int? idVehiculoEntrega;
+  final String? vehiculoNombre;
+  final String? vehiculoPatente;
+
+  /// Cambiar el móvil solo tiene sentido en reparto propio y ya en EN_ENTREGA
+  /// (un simplificado en CONFIRMADO no pasó por expedición).
+  bool get puedeCambiarVehiculo => metodoEntrega == 'PROPIO' && estado == 'EN_ENTREGA';
+
+  String? get vehiculoDisplay {
+    if (vehiculoNombre == null) return null;
+    return vehiculoPatente != null && vehiculoPatente!.isNotEmpty
+        ? '$vehiculoNombre ($vehiculoPatente)'
+        : vehiculoNombre;
+  }
 
   String get tituloDisplay {
     final partes = [clienteNombre, sucursalNombre, tipoSubpedido]
@@ -75,6 +106,23 @@ class SubpedidoEnEntrega {
 /// resueltos por el backend tal como figuran en la remisión (diccionario
 /// del cliente + lo realmente entregado/pickeado, no el pedido original).
 /// "Faltante" no usa esto: es texto libre.
+/// Fila de `GET /pedidos/subpedidos/entrega/vehiculos` (vehículos activos).
+class VehiculoEntregaOpcion {
+  VehiculoEntregaOpcion({required this.idVehiculo, required this.nombre, this.patente});
+
+  factory VehiculoEntregaOpcion.fromJson(Map<String, dynamic> j) => VehiculoEntregaOpcion(
+    idVehiculo: j['id_vehiculo'] as int,
+    nombre: j['nombre'] as String? ?? '',
+    patente: j['patente'] as String?,
+  );
+
+  final int idVehiculo;
+  final String nombre;
+  final String? patente;
+
+  String get display => patente != null && patente!.isNotEmpty ? '$nombre ($patente)' : nombre;
+}
+
 class EntregaItem {
   EntregaItem({
     required this.idPedidoSubpedidoItem,

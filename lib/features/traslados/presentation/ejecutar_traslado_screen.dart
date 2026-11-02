@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,6 +11,13 @@ import '../../recepcion/domain/recepcion_models.dart' show UbicacionSimple;
 import '../../stock/domain/stock_models.dart' show ExistenciaStock, ProductoConStock, ProductoSimple;
 import '../application/traslados_providers.dart';
 import '../domain/traslado_models.dart';
+import 'traslados_ayuda.dart';
+
+// Misma paleta que la demo de `traslados_ayuda.dart`: lo que el operario ve
+// en la presentación es lo que encuentra al hacer el traslado.
+const _pastel = Color(0xFFEDE9FE);
+const _fuerte = Color(0xFF7C3AED);
+const _oscuro = Color(0xFF5B21B6);
 
 /// Producto ya resuelto a un único shape, sin importar si vino de la
 /// búsqueda por texto (`ProductoConStock`, con agregados de stock) o de
@@ -89,6 +97,10 @@ class _OrigenSeleccionado {
 /// conocido, `prefillAlerta` no nulo) y para crear un traslado manual
 /// (busca producto → elige existencia → cantidad/destino). Ambos terminan
 /// en el mismo `POST /traslados/ejecutar` (ver `traslados_repository.dart`).
+///
+/// Visualmente sigue a la presentación del módulo (`traslados_ayuda.dart` +
+/// `walkthrough_modulo.dart`): degradado violeta, una pregunta grande por
+/// paso, puntitos de progreso y entrada en cascada.
 class EjecutarTrasladoScreen extends ConsumerStatefulWidget {
   const EjecutarTrasladoScreen({super.key, this.prefillAlerta});
 
@@ -129,6 +141,9 @@ class _EjecutarTrasladoScreenState extends ConsumerState<EjecutarTrasladoScreen>
 
   static String _formatCantidad(double v) =>
       v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toString();
+
+  /// 0 = producto, 1 = de dónde sale, 2 = a dónde va.
+  int get _paso => _origen != null ? 2 : (_producto != null ? 1 : 0);
 
   void _onSearchChanged(String value) {
     _debounce?.cancel();
@@ -178,6 +193,19 @@ class _EjecutarTrasladoScreenState extends ConsumerState<EjecutarTrasladoScreen>
       _searchController.clear();
     });
     ref.read(trasladoBusquedaProductoProvider.notifier).state = '';
+  }
+
+  /// "Atrás" (flecha del AppBar o gesto del sistema) vuelve un paso en vez
+  /// de salir de la pantalla.
+  void _retroceder() {
+    setState(() {
+      if (_origen != null) {
+        _origen = null;
+        _destino = null;
+      } else {
+        _producto = null;
+      }
+    });
   }
 
   Future<void> _elegirDestino() async {
@@ -241,10 +269,24 @@ class _EjecutarTrasladoScreenState extends ConsumerState<EjecutarTrasladoScreen>
       await showDialog<void>(
         context: context,
         builder: (context) => AlertDialog(
+          icon: Container(
+            width: 52,
+            height: 52,
+            decoration: const BoxDecoration(color: _fuerte, shape: BoxShape.circle),
+            child: const Icon(Icons.check, size: 30, color: Colors.white),
+          ),
           title: const Text('Traslado ejecutado'),
-          content: Text('${resultado.codigo} — ${resultado.itemsProcesados} ítem(s) movidos a stock.'),
+          content: Text(
+            '${resultado.codigo} — movido a ${_destino!.nombre}.',
+            textAlign: TextAlign.center,
+          ),
+          actionsAlignment: MainAxisAlignment.center,
           actions: [
-            TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('OK')),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              style: TextButton.styleFrom(foregroundColor: _oscuro),
+              child: const Text('OK', style: TextStyle(fontWeight: FontWeight.w800)),
+            ),
           ],
         ),
       );
@@ -260,37 +302,327 @@ class _EjecutarTrasladoScreenState extends ConsumerState<EjecutarTrasladoScreen>
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Nuevo traslado')),
-      body: _origen != null
-          ? _FormularioTraslado(
-              origen: _origen!,
-              destino: _destino,
-              cantidadController: _cantidadController,
-              observacionController: _observacionController,
-              ejecutando: _ejecutando,
-              puedeCambiarOrigen: widget.prefillAlerta == null,
-              onCambiarOrigen: _volverABuscarProducto,
-              onElegirDestino: _elegirDestino,
-              onUsarRecomendada: _usarUbicacionRecomendada,
-              onEjecutar: _ejecutar,
-            )
-          : _producto != null
-              ? _ListaExistencias(
-                  idProducto: _producto!.idProducto,
-                  productoNombre: _producto!.nombre,
-                  onSeleccionar: _seleccionarExistencia,
-                  onVolver: () => setState(() => _producto = null),
-                )
-              : _BuscadorProducto(
-                  controller: _searchController,
-                  onChanged: _onSearchChanged,
-                  onSeleccionar: (p) => setState(() => _producto = _ProductoSeleccionado.deStock(p)),
-                  onEscanear: _escanearProducto,
+    final paso = _paso;
+    final desdePendiente = widget.prefillAlerta != null;
+
+    final Widget contenido = switch (paso) {
+      2 => _FormularioTraslado(
+          origen: _origen!,
+          destino: _destino,
+          cantidadController: _cantidadController,
+          observacionController: _observacionController,
+          ejecutando: _ejecutando,
+          puedeCambiarOrigen: !desdePendiente,
+          onCambiarOrigen: _volverABuscarProducto,
+          onElegirDestino: _elegirDestino,
+          onUsarRecomendada: _usarUbicacionRecomendada,
+          onEjecutar: _ejecutar,
+        ),
+      1 => _ListaExistencias(
+          idProducto: _producto!.idProducto,
+          productoNombre: _producto!.nombre,
+          onSeleccionar: _seleccionarExistencia,
+        ),
+      _ => _BuscadorProducto(
+          controller: _searchController,
+          onChanged: _onSearchChanged,
+          onSeleccionar: (p) => setState(() => _producto = _ProductoSeleccionado.deStock(p)),
+          onEscanear: _escanearProducto,
+        ),
+    };
+
+    return PopScope(
+      canPop: desdePendiente || paso == 0,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _retroceder();
+      },
+      child: Scaffold(
+        backgroundColor: AppColors.pageBg,
+        appBar: AppBar(
+          backgroundColor: _pastel,
+          surfaceTintColor: Colors.transparent,
+          elevation: 0,
+          scrolledUnderElevation: 0,
+          foregroundColor: _oscuro,
+          title: Text(
+            desdePendiente ? 'Trasladar' : 'Nuevo traslado',
+            style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: _oscuro),
+          ),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.help_outline),
+              tooltip: '¿Cómo funciona?',
+              onPressed: () => abrirAyudaTraslados(context),
+            ),
+          ],
+        ),
+        body: DecoratedBox(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [_pastel, AppColors.pageBg],
+              stops: [0, 0.45],
+            ),
+          ),
+          child: Column(
+            children: [
+              _Progreso(paso: paso, desdePendiente: desdePendiente),
+              Expanded(
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 250),
+                  child: KeyedSubtree(key: ValueKey(paso), child: contenido),
                 ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
+
+// ---------------------------------------------------------------------------
+// Piezas comunes (mismo lenguaje que walkthrough_modulo.dart)
+// ---------------------------------------------------------------------------
+
+/// Elemento que entra en cascada: sube 24 px con fundido, demorado según
+/// su [orden] — igual que en la presentación del módulo.
+class _Cascada extends StatelessWidget {
+  const _Cascada({required this.orden, required this.child});
+
+  final int orden;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final demora = math.min(orden, 6) * 70;
+    final total = 420 + demora;
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: Duration(milliseconds: total),
+      curve: Interval(demora / total, 1, curve: Curves.easeOutCubic),
+      builder: (context, v, child) => Opacity(
+        opacity: v,
+        child: Transform.translate(offset: Offset(0, 24 * (1 - v)), child: child),
+      ),
+      child: child,
+    );
+  }
+}
+
+/// Puntitos de la presentación (el activo se estira) + "PASO N DE 3".
+class _Progreso extends StatelessWidget {
+  const _Progreso({required this.paso, required this.desdePendiente});
+
+  static const _nombres = ['Producto', 'Origen', 'Destino'];
+
+  final int paso;
+  final bool desdePendiente;
+
+  @override
+  Widget build(BuildContext context) {
+    const estilo = TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: _oscuro, letterSpacing: 1.3);
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 6, 24, 10),
+      child: Row(
+        children: [
+          if (desdePendiente)
+            const Text('PENDIENTE DE ACOMODAR', style: estilo)
+          else ...[
+            for (var i = 0; i < 3; i++)
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 250),
+                curve: Curves.easeOutCubic,
+                margin: const EdgeInsets.only(right: 6),
+                width: i == paso ? 24 : 8,
+                height: 8,
+                decoration: BoxDecoration(
+                  color: i <= paso ? _fuerte : AppColors.borderStrong,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
+            const SizedBox(width: 6),
+            Text('PASO ${paso + 1} DE 3 · ${_nombres[paso].toUpperCase()}', style: estilo),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// La pregunta grande de cada paso, como "Cómo funciona" en la presentación.
+class _Titulo extends StatelessWidget {
+  const _Titulo({
+    required this.titulo,
+    this.subtitulo,
+    this.padding = const EdgeInsets.fromLTRB(24, 4, 24, 18),
+  });
+
+  final String titulo;
+  final Widget? subtitulo;
+  final EdgeInsets padding;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: padding,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _Cascada(
+            orden: 0,
+            child: Text(
+              titulo,
+              style: const TextStyle(fontSize: 28, height: 1.1, fontWeight: FontWeight.w900, color: AppColors.ink),
+            ),
+          ),
+          if (subtitulo != null) ...[
+            const SizedBox(height: 6),
+            _Cascada(
+              orden: 1,
+              child: DefaultTextStyle.merge(
+                style: const TextStyle(fontSize: 15, height: 1.35, color: AppColors.sub),
+                child: subtitulo!,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Tarjeta blanca de las listas — la de "Pendientes" de la demo, a tamaño
+/// real: texto a la izquierda y una píldora a la derecha.
+class _Tarjeta extends StatelessWidget {
+  const _Tarjeta({
+    required this.titulo,
+    required this.detalle,
+    required this.pildora,
+    required this.onTap,
+    this.extraTitulo,
+    this.resaltada = false,
+  });
+
+  final String titulo;
+  final String detalle;
+  final Widget pildora;
+  final VoidCallback onTap;
+  final Widget? extraTitulo;
+  final bool resaltada;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppColors.surface,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(16, 13, 12, 13),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: resaltada ? Border.all(color: _fuerte.withValues(alpha: 0.45), width: 1.4) : null,
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            titulo,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.text),
+                          ),
+                        ),
+                        if (extraTitulo != null) ...[const SizedBox(width: 6), extraTitulo!],
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      detalle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 12.5, color: AppColors.muted),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              pildora,
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _Pildora extends StatelessWidget {
+  const _Pildora(this.texto, {this.llena = true});
+
+  final String texto;
+  final bool llena;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+      decoration: BoxDecoration(color: llena ? _fuerte : _pastel, borderRadius: BorderRadius.circular(999)),
+      child: Text(
+        texto,
+        style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: llena ? Colors.white : _oscuro),
+      ),
+    );
+  }
+}
+
+class _Mensaje extends StatelessWidget {
+  const _Mensaje(this.texto, {this.icono = Icons.search_off, this.color = AppColors.muted});
+
+  final String texto;
+  final IconData icono;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icono, size: 40, color: AppColors.faint),
+            const SizedBox(height: 12),
+            Text(texto, textAlign: TextAlign.center, style: TextStyle(color: color)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Lista de [_Tarjeta]s: las primeras entran en cascada.
+Widget _listaTarjetas(int cantidad, Widget Function(int i) tarjeta) {
+  return ListView.separated(
+    padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+    itemCount: cantidad,
+    separatorBuilder: (_, _) => const SizedBox(height: 10),
+    itemBuilder: (context, i) => i < 8 ? _Cascada(orden: 2 + i, child: tarjeta(i)) : tarjeta(i),
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Paso 1 · ¿Qué vas a mover?
+// ---------------------------------------------------------------------------
 
 class _BuscadorProducto extends ConsumerWidget {
   const _BuscadorProducto({
@@ -311,143 +643,183 @@ class _BuscadorProducto extends ConsumerWidget {
 
     return Column(
       children: [
+        const _Titulo(
+          titulo: '¿Qué vas a mover?',
+          subtitulo: Text('Escaneá el código del producto o buscalo por nombre.'),
+        ),
         Padding(
-          padding: const EdgeInsets.all(20),
-          child: TextField(
-            controller: controller,
-            autofocus: true,
-            onChanged: onChanged,
-            decoration: InputDecoration(
-              hintText: 'Buscar producto por nombre o código...',
-              prefixIcon: const Icon(Icons.search),
-              suffixIcon: IconButton(
-                icon: const Icon(Icons.qr_code_scanner, color: AppColors.accent),
-                tooltip: 'Escanear código de barras',
-                onPressed: onEscanear,
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 14),
+          child: _Cascada(
+            orden: 2,
+            child: TextField(
+              controller: controller,
+              onChanged: onChanged,
+              decoration: InputDecoration(
+                hintText: 'Nombre o código...',
+                filled: true,
+                fillColor: AppColors.surface,
+                prefixIcon: const Icon(Icons.search),
+                suffixIcon: IconButton(
+                  icon: const Icon(Icons.qr_code_scanner, color: _fuerte),
+                  tooltip: 'Escanear código de barras',
+                  onPressed: onEscanear,
+                ),
               ),
             ),
           ),
         ),
         Expanded(
-          child: async.when(
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (e, _) => Center(child: Text(describeError(e), style: const TextStyle(color: AppColors.erTx))),
-            data: (items) {
-              if (controller.text.trim().isEmpty) {
-                return const Center(child: Text('Escribí para buscar', style: TextStyle(color: AppColors.muted)));
-              }
-              if (items.isEmpty) {
-                return const Center(child: Text('Sin resultados', style: TextStyle(color: AppColors.muted)));
-              }
-              return ListView.separated(
-                padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-                itemCount: items.length,
-                separatorBuilder: (_, _) => const SizedBox(height: 8),
-                itemBuilder: (context, i) {
-                  final p = items[i];
-                  return Material(
-                    color: AppColors.surface,
-                    borderRadius: BorderRadius.circular(14),
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(14),
-                      onTap: () => onSeleccionar(p),
-                      child: Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 40,
-                              height: 40,
-                              decoration: BoxDecoration(color: AppColors.accentSoft, borderRadius: BorderRadius.circular(12)),
-                              child: const Icon(Icons.inventory_2_outlined, color: AppColors.accentDark, size: 20),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    p.nombre,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: AppColors.text),
-                                  ),
-                                  Text(
-                                    '${p.codigoInterno} · Disponible: ${p.stockDisponible.toStringAsFixed(0)} ${p.unidadSimbolo}',
-                                    style: const TextStyle(fontSize: 12, color: AppColors.muted),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const Icon(Icons.chevron_right, color: AppColors.faint),
-                          ],
-                        ),
-                      ),
-                    ),
-                  );
-                },
-              );
-            },
-          ),
+          child: controller.text.trim().isEmpty
+              ? _InvitacionEscanear(onEscanear: onEscanear)
+              : async.when(
+                  loading: () => const Center(child: CircularProgressIndicator(color: _fuerte)),
+                  error: (e, _) => _Mensaje(describeError(e), icono: Icons.error_outline, color: AppColors.erTx),
+                  data: (items) {
+                    if (items.isEmpty) return const _Mensaje('Sin resultados');
+                    return _listaTarjetas(items.length, (i) {
+                      final p = items[i];
+                      return _Tarjeta(
+                        titulo: p.nombre,
+                        detalle:
+                            '${p.codigoInterno} · ${p.stockDisponible.toStringAsFixed(0)} ${p.unidadSimbolo} disponibles',
+                        pildora: const _Pildora('Elegir'),
+                        onTap: () => onSeleccionar(p),
+                      );
+                    });
+                  },
+                ),
         ),
       ],
     );
   }
 }
 
+/// Con el buscador vacío: el botón grande de escanear, con las ondas de la
+/// primera pantalla de la presentación.
+class _InvitacionEscanear extends StatefulWidget {
+  const _InvitacionEscanear({required this.onEscanear});
+
+  final VoidCallback onEscanear;
+
+  @override
+  State<_InvitacionEscanear> createState() => _InvitacionEscanearState();
+}
+
+class _InvitacionEscanearState extends State<_InvitacionEscanear> with SingleTickerProviderStateMixin {
+  late final _loop = AnimationController(vsync: this, duration: const Duration(seconds: 3))..repeat();
+
+  @override
+  void dispose() {
+    _loop.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+      child: _Cascada(
+        orden: 3,
+        child: Column(
+          children: [
+            SizedBox(
+              width: 210,
+              height: 210,
+              child: AnimatedBuilder(
+                animation: _loop,
+                builder: (context, child) {
+                  final t = _loop.value;
+                  return Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      for (final fase in const [0.0, 0.5])
+                        Container(
+                          width: 104 + 100 * ((t + fase) % 1),
+                          height: 104 + 100 * ((t + fase) % 1),
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: _fuerte.withValues(alpha: 0.22 * (1 - (t + fase) % 1)),
+                          ),
+                        ),
+                      Transform.translate(offset: Offset(0, 5 * math.sin(2 * math.pi * t)), child: child),
+                    ],
+                  );
+                },
+                child: Material(
+                  color: _fuerte,
+                  shape: const CircleBorder(),
+                  elevation: 8,
+                  shadowColor: _fuerte.withValues(alpha: 0.5),
+                  child: InkWell(
+                    customBorder: const CircleBorder(),
+                    onTap: widget.onEscanear,
+                    child: const SizedBox(
+                      width: 104,
+                      height: 104,
+                      child: Icon(Icons.qr_code_scanner, size: 48, color: Colors.white),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            const Text(
+              'Tocá para escanear',
+              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: _oscuro),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'o escribí el nombre arriba',
+              style: TextStyle(fontSize: 14, color: AppColors.muted),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Paso 2 · ¿De dónde sale?
+// ---------------------------------------------------------------------------
+
 class _ListaExistencias extends ConsumerWidget {
   const _ListaExistencias({
     required this.idProducto,
     required this.productoNombre,
     required this.onSeleccionar,
-    required this.onVolver,
   });
 
   final int idProducto;
   final String productoNombre;
   final ValueChanged<ExistenciaStock> onSeleccionar;
-  final VoidCallback onVolver;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final async = ref.watch(trasladoExistenciasDeProductoProvider(idProducto));
 
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(8, 8, 20, 0),
-          child: Row(
-            children: [
-              IconButton(onPressed: onVolver, icon: const Icon(Icons.arrow_back)),
-              Expanded(
-                child: Text(
-                  productoNombre,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: AppColors.text),
-                ),
-              ),
-            ],
-          ),
-        ),
-        const Padding(
-          padding: EdgeInsets.fromLTRB(20, 4, 20, 10),
-          child: Text(
-            'Elegí de qué lote/ubicación sale el traslado',
-            style: TextStyle(fontSize: 13, color: AppColors.muted),
+        _Titulo(
+          titulo: '¿De dónde sale?',
+          subtitulo: Text.rich(
+            TextSpan(
+              children: [
+                const TextSpan(text: 'Elegí la ubicación y el lote de '),
+                TextSpan(text: productoNombre, style: const TextStyle(fontWeight: FontWeight.w800, color: AppColors.text)),
+                const TextSpan(text: '.'),
+              ],
+            ),
           ),
         ),
         Expanded(
           child: async.when(
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (e, _) => Center(child: Text(describeError(e), style: const TextStyle(color: AppColors.erTx))),
+            loading: () => const Center(child: CircularProgressIndicator(color: _fuerte)),
+            error: (e, _) => _Mensaje(describeError(e), icono: Icons.error_outline, color: AppColors.erTx),
             data: (existencias) {
               final disponibles = existencias.where((e) => e.cantidadDisponible > 0).toList();
               if (disponibles.isEmpty) {
-                return const Center(
-                  child: Text('No hay stock disponible para trasladar', style: TextStyle(color: AppColors.muted)),
-                );
+                return const _Mensaje('No hay stock disponible para trasladar', icono: Icons.inventory_2_outlined);
               }
               // La(s) que están en la ubicación recomendada del producto van
               // primero — no hay que ir a buscarlas en medio de la lista.
@@ -455,70 +827,20 @@ class _ListaExistencias extends ConsumerWidget {
                 ...disponibles.where((e) => e.esUbicacionRecomendada),
                 ...disponibles.where((e) => !e.esUbicacionRecomendada),
               ];
-              return ListView.separated(
-                padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-                itemCount: ordenadas.length,
-                separatorBuilder: (_, _) => const SizedBox(height: 8),
-                itemBuilder: (context, i) {
-                  final e = ordenadas[i];
-                  final recomendada = e.esUbicacionRecomendada;
-                  return Material(
-                    color: AppColors.surface,
-                    borderRadius: BorderRadius.circular(14),
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(14),
-                      onTap: () => onSeleccionar(e),
-                      child: Container(
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(14),
-                          border: recomendada
-                              ? Border.all(color: AppColors.okTx.withValues(alpha: 0.35), width: 1.4)
-                              : null,
-                        ),
-                        padding: const EdgeInsets.all(12),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    children: [
-                                      Flexible(
-                                        child: Text(
-                                          '${e.ubicacionNombre} (${e.ubicacionCodigo})',
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: AppColors.text),
-                                        ),
-                                      ),
-                                      if (recomendada) ...[
-                                        const SizedBox(width: 6),
-                                        const _BadgeRecomendada(),
-                                      ],
-                                    ],
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    'Lote ${e.loteInterno}',
-                                    style: const TextStyle(fontSize: 12, color: AppColors.muted),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            Text(
-                              '${e.cantidadDisponible.toStringAsFixed(0)} ${e.unidadSimbolo}',
-                              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: AppColors.accentDark),
-                            ),
-                            const SizedBox(width: 8),
-                            const Icon(Icons.chevron_right, color: AppColors.faint),
-                          ],
-                        ),
-                      ),
-                    ),
-                  );
-                },
-              );
+              return _listaTarjetas(ordenadas.length, (i) {
+                final e = ordenadas[i];
+                return _Tarjeta(
+                  titulo: _codigoONombre(e.ubicacionNombre, e.ubicacionCodigo),
+                  extraTitulo: e.esUbicacionRecomendada ? const _BadgeRecomendada() : null,
+                  detalle: 'Lote ${e.loteInterno} · ${e.ubicacionNombre}',
+                  pildora: _Pildora(
+                    '${e.cantidadDisponible.toStringAsFixed(0)} ${e.unidadSimbolo}',
+                    llena: false,
+                  ),
+                  resaltada: e.esUbicacionRecomendada,
+                  onTap: () => onSeleccionar(e),
+                );
+              });
             },
           ),
         ),
@@ -537,15 +859,15 @@ class _BadgeRecomendada extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-      decoration: BoxDecoration(color: AppColors.okBg, borderRadius: BorderRadius.circular(999)),
-      child: Row(
+      decoration: BoxDecoration(color: _pastel, borderRadius: BorderRadius.circular(999)),
+      child: const Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.star_rounded, size: 12, color: AppColors.okTx),
-          const SizedBox(width: 3),
+          Icon(Icons.star_rounded, size: 12, color: _oscuro),
+          SizedBox(width: 3),
           Text(
             'Recomendada',
-            style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: AppColors.okTx),
+            style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: _oscuro),
           ),
         ],
       ),
@@ -553,53 +875,149 @@ class _BadgeRecomendada extends StatelessWidget {
   }
 }
 
-/// Aviso arriba del campo de destino cuando el producto tiene una ubicación
-/// recomendada configurada y todavía no es la elegida — con un atajo para
-/// usarla directo, sin tener que buscarla ni escanearla.
-class _BannerUbicacionRecomendada extends StatelessWidget {
-  const _BannerUbicacionRecomendada({
+// ---------------------------------------------------------------------------
+// Paso 3 · ¿A dónde va?
+// ---------------------------------------------------------------------------
+
+/// Título chico de cada bloque del formulario — mismo estilo que
+/// "PENDIENTES DE ACOMODAR" en la demo.
+class _Etiqueta extends StatelessWidget {
+  const _Etiqueta(this.texto);
+
+  final String texto;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 2, bottom: 8),
+      child: Text(
+        texto,
+        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: AppColors.muted, letterSpacing: 1),
+      ),
+    );
+  }
+}
+
+/// Muestra el código si la ubicación tiene uno (es lo que está impreso en la
+/// etiqueta física), si no el nombre.
+String _codigoONombre(String nombre, String codigo) => codigo.trim().isNotEmpty ? codigo : nombre;
+
+/// Uno de los dos extremos de la ruta origen → destino. El destino se pinta
+/// de violeta cuando ya está elegido, como el chip de la demo.
+class _ExtremoRuta extends StatelessWidget {
+  const _ExtremoRuta({
+    required this.etiqueta,
+    required this.codigo,
+    required this.nombre,
+    this.lleno = false,
+    this.vacio = false,
+  });
+
+  final String etiqueta;
+  final String codigo;
+  final String nombre;
+  final bool lleno;
+  final bool vacio;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorTexto = lleno ? Colors.white : (vacio ? AppColors.faint : AppColors.text);
+    final colorSub = lleno ? Colors.white.withValues(alpha: 0.8) : AppColors.muted;
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 9, 12, 10),
+      decoration: BoxDecoration(
+        color: lleno ? _fuerte : AppColors.soft,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: lleno ? _fuerte : AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            etiqueta,
+            style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w800, color: colorSub, letterSpacing: 0.8),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            codigo,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: colorTexto),
+          ),
+          Text(
+            nombre,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 11, color: colorSub),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Píldora de la ubicación recomendada, igual a la de la demo: estrella,
+/// "Recomendada: X" y un "Usar" blanco que la pone de destino de un toque.
+/// Una vez elegida queda con un tilde, para que se vea que el destino actual
+/// es el recomendado.
+class _PildoraRecomendada extends StatelessWidget {
+  const _PildoraRecomendada({
     required this.nombre,
     required this.codigo,
+    required this.enUso,
     required this.onUsar,
   });
 
   final String nombre;
   final String codigo;
+  final bool enUso;
   final VoidCallback onUsar;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
-      decoration: BoxDecoration(
-        color: AppColors.okBg,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.okTx.withValues(alpha: 0.25)),
-      ),
+      padding: const EdgeInsets.fromLTRB(14, 8, 8, 8),
+      constraints: const BoxConstraints(minHeight: 48),
+      decoration: BoxDecoration(color: _pastel, borderRadius: BorderRadius.circular(14)),
       child: Row(
         children: [
-          const Icon(Icons.star_rounded, size: 20, color: AppColors.okTx),
-          const SizedBox(width: 10),
+          const Icon(Icons.star_rounded, size: 18, color: _oscuro),
+          const SizedBox(width: 8),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Ubicación recomendada',
-                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.okTx),
-                ),
-                Text(
-                  codigo.isNotEmpty && codigo != nombre ? '$nombre ($codigo)' : nombre,
-                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: AppColors.text),
-                ),
-              ],
+            child: Text.rich(
+              TextSpan(
+                children: [
+                  const TextSpan(text: 'Recomendada: '),
+                  TextSpan(text: _codigoONombre(nombre, codigo), style: const TextStyle(fontWeight: FontWeight.w800)),
+                ],
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: _oscuro),
             ),
           ),
-          TextButton(
-            onPressed: onUsar,
-            style: TextButton.styleFrom(foregroundColor: AppColors.okTx),
-            child: const Text('Usar', style: TextStyle(fontWeight: FontWeight.w800)),
-          ),
+          if (enUso)
+            Container(
+              width: 28,
+              height: 28,
+              margin: const EdgeInsets.only(right: 4),
+              decoration: const BoxDecoration(color: _fuerte, shape: BoxShape.circle),
+              child: const Icon(Icons.check, size: 17, color: Colors.white),
+            )
+          else
+            Material(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(999),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(999),
+                onTap: onUsar,
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Text('Usar', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: _oscuro)),
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -633,107 +1051,228 @@ class _FormularioTraslado extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.all(20),
+    final d = destino;
+    final tieneRecomendada = origen.idUbicacionPreferida != null;
+
+    return Column(
       children: [
-        Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(color: AppColors.soft, borderRadius: BorderRadius.circular(14)),
-          child: Row(
+        Expanded(
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
             children: [
-              Expanded(
+              const _Titulo(
+                titulo: '¿A dónde va?',
+                subtitulo: Text('Elegí el destino y cuánto movés.'),
+                padding: EdgeInsets.fromLTRB(4, 4, 4, 18),
+              ),
+              // Tarjeta del traslado: producto + ruta origen → destino, como
+              // la hoja que sube en la demo.
+              _Cascada(
+                orden: 2,
+                child: Container(
+                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+                  decoration: BoxDecoration(
+                    color: AppColors.surface,
+                    borderRadius: BorderRadius.circular(18),
+                    boxShadow: [
+                      BoxShadow(color: _fuerte.withValues(alpha: 0.10), blurRadius: 20, offset: const Offset(0, 8)),
+                    ],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              origen.productoNombre,
+                              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: AppColors.text),
+                            ),
+                          ),
+                          if (puedeCambiarOrigen)
+                            InkWell(
+                              onTap: onCambiarOrigen,
+                              borderRadius: BorderRadius.circular(8),
+                              child: const Padding(
+                                padding: EdgeInsets.fromLTRB(8, 2, 2, 2),
+                                child: Text(
+                                  'Cambiar',
+                                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: _fuerte),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'Lote ${origen.loteInterno} · Disponible ${_EjecutarTrasladoScreenState._formatCantidad(origen.cantidadDisponible)} ${origen.unidadSimbolo}',
+                        style: const TextStyle(fontSize: 12, color: AppColors.muted),
+                      ),
+                      const SizedBox(height: 14),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _ExtremoRuta(
+                              etiqueta: 'DESDE',
+                              codigo: _codigoONombre(origen.ubicacionNombre, origen.ubicacionCodigo),
+                              nombre: origen.ubicacionNombre,
+                            ),
+                          ),
+                          const Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 8),
+                            child: Icon(Icons.arrow_forward, size: 18, color: AppColors.faint),
+                          ),
+                          Expanded(
+                            child: GestureDetector(
+                              onTap: onElegirDestino,
+                              // El destino entra con el mismo saltito elástico
+                              // que en la demo cada vez que cambia.
+                              child: TweenAnimationBuilder<double>(
+                                key: ValueKey(d?.idUbicacion),
+                                tween: Tween(begin: d == null ? 1 : 0, end: 1),
+                                duration: const Duration(milliseconds: 650),
+                                curve: Curves.elasticOut,
+                                builder: (context, v, child) => Transform.scale(scale: 0.6 + 0.4 * v, child: child),
+                                child: d == null
+                                    ? const _ExtremoRuta(etiqueta: 'HACIA', codigo: 'Destino', nombre: 'Sin elegir', vacio: true)
+                                    : _ExtremoRuta(
+                                        etiqueta: 'HACIA',
+                                        codigo: _codigoONombre(d.nombre, d.codigo),
+                                        nombre: d.nombre,
+                                        lleno: true,
+                                      ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+              _Cascada(
+                orden: 3,
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Text(
-                      origen.productoNombre,
-                      style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: AppColors.text),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      'Lote ${origen.loteInterno} · Desde ${origen.ubicacionNombre} (${origen.ubicacionCodigo})',
-                      style: const TextStyle(fontSize: 12, color: AppColors.muted),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      'Disponible: ${origen.cantidadDisponible.toStringAsFixed(0)} ${origen.unidadSimbolo}',
-                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.text),
+                    const _Etiqueta('DESTINO'),
+                    if (tieneRecomendada) ...[
+                      _PildoraRecomendada(
+                        nombre: origen.ubicacionPreferidaNombre ?? '',
+                        codigo: origen.ubicacionPreferidaCodigo ?? '',
+                        enUso: d?.idUbicacion == origen.idUbicacionPreferida,
+                        onUsar: onUsarRecomendada,
+                      ),
+                      const SizedBox(height: 10),
+                    ],
+                    Material(
+                      color: AppColors.surface,
+                      borderRadius: BorderRadius.circular(14),
+                      child: InkWell(
+                        onTap: onElegirDestino,
+                        borderRadius: BorderRadius.circular(14),
+                        child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 36,
+                                height: 36,
+                                decoration: BoxDecoration(color: _pastel, borderRadius: BorderRadius.circular(10)),
+                                child: const Icon(Icons.location_on_outlined, color: _oscuro, size: 19),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  d == null
+                                      ? (tieneRecomendada ? 'Elegir otra ubicación' : 'Buscar o escanear ubicación')
+                                      : 'Cambiar destino',
+                                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.text),
+                                ),
+                              ),
+                              const Icon(Icons.qr_code_scanner, size: 18, color: AppColors.muted),
+                              const SizedBox(width: 4),
+                              const Icon(Icons.chevron_right, color: AppColors.faint),
+                            ],
+                          ),
+                        ),
+                      ),
                     ),
                   ],
                 ),
               ),
-              if (puedeCambiarOrigen)
-                TextButton(onPressed: onCambiarOrigen, child: const Text('Cambiar')),
+              const SizedBox(height: 20),
+              _Cascada(
+                orden: 4,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const _Etiqueta('CANTIDAD'),
+                    TextField(
+                      controller: cantidadController,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: AppColors.text),
+                      decoration: InputDecoration(
+                        hintText: 'Cantidad a trasladar',
+                        filled: true,
+                        fillColor: AppColors.surface,
+                        suffixText: origen.unidadSimbolo,
+                        suffixStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.muted),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    const _Etiqueta('OBSERVACIÓN'),
+                    TextField(
+                      controller: observacionController,
+                      maxLines: 3,
+                      decoration: const InputDecoration(
+                        hintText: 'Opcional',
+                        filled: true,
+                        fillColor: AppColors.surface,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ],
           ),
         ),
-        const SizedBox(height: 20),
-        TextField(
-          controller: cantidadController,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: InputDecoration(labelText: 'Cantidad a trasladar (${origen.unidadSimbolo})'),
-        ),
-        const SizedBox(height: 16),
-        if (origen.idUbicacionPreferida != null && destino?.idUbicacion != origen.idUbicacionPreferida) ...[
-          _BannerUbicacionRecomendada(
-            nombre: origen.ubicacionPreferidaNombre ?? '',
-            codigo: origen.ubicacionPreferidaCodigo ?? '',
-            onUsar: onUsarRecomendada,
-          ),
-          const SizedBox(height: 12),
-        ],
-        InkWell(
-          onTap: onElegirDestino,
-          borderRadius: BorderRadius.circular(14),
-          child: InputDecorator(
-            decoration: const InputDecoration(labelText: 'Ubicación destino'),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.location_on_outlined,
-                  size: 18,
-                  color: destino == null ? AppColors.faint : AppColors.accent,
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    destino != null ? '${destino!.nombre} (${destino!.codigo})' : 'Elegir ubicación',
-                    style: TextStyle(
-                      color: destino == null ? AppColors.faint : AppColors.text,
-                      fontWeight: destino == null ? FontWeight.normal : FontWeight.w600,
-                    ),
-                  ),
-                ),
-                if (destino != null && destino!.idUbicacion == origen.idUbicacionPreferida) ...[
-                  const _BadgeRecomendada(),
-                  const SizedBox(width: 8),
-                ],
-                const Icon(Icons.search, size: 18, color: AppColors.muted),
-              ],
+        // Botón píldora fijo abajo, como el de la presentación: gris hasta
+        // que haya destino, violeta oscuro después.
+        SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+            child: FilledButton(
+              onPressed: ejecutando ? null : onEjecutar,
+              style: FilledButton.styleFrom(
+                backgroundColor: d != null ? _oscuro : AppColors.borderStrong,
+                foregroundColor: Colors.white,
+                disabledBackgroundColor: _oscuro.withValues(alpha: 0.7),
+                minimumSize: const Size.fromHeight(54),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
+                textStyle: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.w800),
+              ),
+              child: ejecutando
+                  ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    )
+                  : const Text('Ejecutar traslado'),
             ),
           ),
-        ),
-        const SizedBox(height: 16),
-        TextField(
-          controller: observacionController,
-          maxLines: 3,
-          decoration: const InputDecoration(hintText: 'Observación (opcional)'),
-        ),
-        const SizedBox(height: 28),
-        ElevatedButton(
-          onPressed: ejecutando ? null : onEjecutar,
-          child: ejecutando
-              ? const SizedBox(
-                  height: 20,
-                  width: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                )
-              : const Text('Ejecutar traslado'),
         ),
       ],
     );
   }
 }
+
+// ---------------------------------------------------------------------------
+// Buscador de ubicación destino
+// ---------------------------------------------------------------------------
 
 class _BuscarUbicacionSheet extends ConsumerStatefulWidget {
   const _BuscarUbicacionSheet({this.idUbicacionRecomendada});
@@ -805,7 +1344,12 @@ class _BuscarUbicacionSheetState extends ConsumerState<_BuscarUbicacionSheet> {
       child: Container(
         height: MediaQuery.of(context).size.height * 0.75,
         decoration: const BoxDecoration(
-          color: AppColors.pageBg,
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [_pastel, AppColors.pageBg],
+            stops: [0, 0.35],
+          ),
           borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
         ),
         child: Padding(
@@ -818,12 +1362,17 @@ class _BuscarUbicacionSheetState extends ConsumerState<_BuscarUbicacionSheet> {
                   width: 36,
                   height: 4,
                   margin: const EdgeInsets.only(bottom: 16),
-                  decoration: BoxDecoration(color: AppColors.border, borderRadius: BorderRadius.circular(999)),
+                  decoration: BoxDecoration(color: _fuerte.withValues(alpha: 0.3), borderRadius: BorderRadius.circular(999)),
                 ),
               ),
               const Text(
-                'Buscar ubicación destino',
-                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: AppColors.text),
+                'Ubicación destino',
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: AppColors.ink),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'Escaneá la etiqueta o buscala por nombre.',
+                style: TextStyle(fontSize: 14, color: AppColors.sub),
               ),
               const SizedBox(height: 14),
               TextField(
@@ -832,9 +1381,11 @@ class _BuscarUbicacionSheetState extends ConsumerState<_BuscarUbicacionSheet> {
                 onChanged: _onChanged,
                 decoration: InputDecoration(
                   hintText: 'Nombre o código de ubicación...',
+                  filled: true,
+                  fillColor: AppColors.surface,
                   prefixIcon: const Icon(Icons.search),
                   suffixIcon: IconButton(
-                    icon: const Icon(Icons.qr_code_scanner, color: AppColors.accent),
+                    icon: const Icon(Icons.qr_code_scanner, color: _fuerte),
                     tooltip: 'Escanear ubicación',
                     onPressed: _escanear,
                   ),
@@ -843,67 +1394,26 @@ class _BuscarUbicacionSheetState extends ConsumerState<_BuscarUbicacionSheet> {
               const SizedBox(height: 14),
               Expanded(
                 child: async.when(
-                  loading: () => const Center(child: CircularProgressIndicator()),
-                  error: (e, _) => Center(child: Text(describeError(e))),
+                  loading: () => const Center(child: CircularProgressIndicator(color: _fuerte)),
+                  error: (e, _) => _Mensaje(describeError(e), icono: Icons.error_outline, color: AppColors.erTx),
                   data: (items) {
                     if (_controller.text.trim().isEmpty) {
-                      return const Center(child: Text('Escribí para buscar', style: TextStyle(color: AppColors.muted)));
+                      return const _Mensaje('Escribí para buscar', icono: Icons.location_on_outlined);
                     }
-                    if (items.isEmpty) {
-                      return const Center(child: Text('Sin resultados', style: TextStyle(color: AppColors.muted)));
-                    }
+                    if (items.isEmpty) return const _Mensaje('Sin resultados');
                     return ListView.separated(
                       itemCount: items.length,
-                      separatorBuilder: (_, _) => const SizedBox(height: 8),
+                      separatorBuilder: (_, _) => const SizedBox(height: 10),
                       itemBuilder: (context, i) {
                         final u = items[i];
                         final recomendada = u.idUbicacion == widget.idUbicacionRecomendada;
-                        return Material(
-                          color: AppColors.surface,
-                          borderRadius: BorderRadius.circular(14),
-                          child: InkWell(
-                            borderRadius: BorderRadius.circular(14),
-                            onTap: () => Navigator.of(context).pop(u),
-                            child: Container(
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(14),
-                                border: recomendada
-                                    ? Border.all(color: AppColors.okTx.withValues(alpha: 0.35), width: 1.4)
-                                    : null,
-                              ),
-                              padding: const EdgeInsets.all(12),
-                              child: Row(
-                                children: [
-                                  Container(
-                                    width: 40,
-                                    height: 40,
-                                    decoration: BoxDecoration(color: AppColors.accentSoft, borderRadius: BorderRadius.circular(12)),
-                                    child: const Icon(Icons.location_on_outlined, color: AppColors.accentDark, size: 20),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Row(
-                                      children: [
-                                        Flexible(
-                                          child: Text(
-                                            '${u.nombre} (${u.codigo})',
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: AppColors.text),
-                                          ),
-                                        ),
-                                        if (recomendada) ...[
-                                          const SizedBox(width: 6),
-                                          const _BadgeRecomendada(),
-                                        ],
-                                      ],
-                                    ),
-                                  ),
-                                  const Icon(Icons.chevron_right, color: AppColors.faint),
-                                ],
-                              ),
-                            ),
-                          ),
+                        return _Tarjeta(
+                          titulo: _codigoONombre(u.nombre, u.codigo),
+                          extraTitulo: recomendada ? const _BadgeRecomendada() : null,
+                          detalle: u.nombre,
+                          pildora: const _Pildora('Usar'),
+                          resaltada: recomendada,
+                          onTap: () => Navigator.of(context).pop(u),
                         );
                       },
                     );

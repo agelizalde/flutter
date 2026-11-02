@@ -17,6 +17,7 @@ import '../features/pedidos/presentation/subpedido_items_screen.dart';
 import '../features/ajuste_stock/presentation/ajuste_stock_detalle_screen.dart';
 import '../features/ajuste_stock/presentation/ajuste_stock_historial_screen.dart';
 import '../features/ajuste_stock/presentation/ajuste_stock_home_screen.dart';
+import '../features/ajuste_stock/presentation/control_por_producto_screen.dart';
 import '../features/ajuste_stock/presentation/merma_rapida_screen.dart';
 import '../features/ajuste_stock/presentation/nuevo_ajuste_screen.dart';
 import '../features/ajuste_stock_solicitudes/presentation/mis_solicitudes_screen.dart';
@@ -385,12 +386,17 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/ajuste-stock/nuevo',
         builder: (context, state) =>
-            const DebugScreenTag(label: 'Ajuste de stock · Nuevo', child: NuevoAjusteScreen()),
+            const DebugScreenTag(label: 'Ajuste de stock · Control por ubicación', child: NuevoAjusteScreen()),
+      ),
+      GoRoute(
+        path: '/ajuste-stock/por-producto',
+        builder: (context, state) =>
+            const DebugScreenTag(label: 'Ajuste de stock · Control por producto', child: ControlPorProductoScreen()),
       ),
       GoRoute(
         path: '/ajuste-stock/merma-rapida',
         builder: (context, state) =>
-            const DebugScreenTag(label: 'Ajuste de stock · Merma rápida', child: MermaRapidaScreen()),
+            const DebugScreenTag(label: 'Ajuste de stock · Mermar producto', child: MermaRapidaScreen()),
       ),
       GoRoute(
         path: '/ajuste-stock/solicitar',

@@ -66,6 +66,11 @@ List<_Origen> _origenesVisibles(
 /// de pedido se genera solo (ver `_generarCodigoPedido`), a diferencia de la
 /// web donde el campo queda visible. Los subpedidos "vacíos" se agregan
 /// después desde la web, como ya documenta `PedidosHomeScreen`.
+///
+/// Con "Pedido simplificado" disponible (`config.simplificadoDisponible`) no
+/// se elige origen sino el TIPO de subpedido, y se crea con
+/// `crearSimplificado`: el pedido nace con ese subpedido ya confirmado,
+/// listo para "Entregar pedido" (mismo flujo que `NuevoPedidoModal.jsx`).
 /// Devuelve el pedido creado, o `null` si se canceló.
 Future<PedidoDetalle?> abrirNuevoPedidoSheet(
   BuildContext context,
@@ -97,6 +102,8 @@ Future<PedidoDetalle?> abrirNuevoPedidoSheet(
   List<PedidoEstandarResumen> estandares = [];
   PedidoEstandarResumen? estandarSel;
   _Origen origen = config.origenVacioHabilitado ? _Origen.vacio : _Origen.estandar;
+  final simplificado = config.simplificadoDisponible;
+  SubpedidoTipoSimple? tipoSubpedido;
 
   PedidoDetalle? creado;
 
@@ -107,7 +114,7 @@ Future<PedidoDetalle?> abrirNuevoPedidoSheet(
   final ok = await showFormSheet(
     context,
     titulo: 'Nuevo pedido',
-    textoGuardar: 'Crear pedido',
+    textoGuardar: simplificado ? 'Crear y confirmar' : 'Crear pedido',
     initialChildSize: 0.92,
     minChildSize: 0.6,
     camposBuilder: (context, setStateSheet) {
@@ -183,10 +190,41 @@ Future<PedidoDetalle?> abrirNuevoPedidoSheet(
           ),
         ],
 
+        // TIPO DE SUBPEDIDO — solo en modo simplificado, reemplaza al origen.
+        if (simplificado) ...[
+          const SizedBox(height: 14),
+          const _SectionLabel('Subpedido'),
+          const SizedBox(height: 8),
+          PickerField(
+            label: 'Tipo de subpedido *',
+            value: tipoSubpedido?.nombre,
+            placeholder: 'Elegí un tipo',
+            onTap: () async {
+              final elegido = await showSelectorSheet<SubpedidoTipoSimple>(
+                context,
+                titulo: 'Elegir tipo de subpedido',
+                cargar: (q) => repositorio.tiposSubpedidoListar(q: q),
+                etiqueta: (t) => t.nombre,
+                seleccionado: tipoSubpedido,
+                esIgual: (t) =>
+                    t.idPedidoSubpedidoTipo == tipoSubpedido?.idPedidoSubpedidoTipo,
+              );
+              if (elegido != null) setStateSheet(() => tipoSubpedido = elegido);
+            },
+          ),
+          const Padding(
+            padding: EdgeInsets.only(top: 6, left: 4),
+            child: Text(
+              'El pedido se crea y se confirma directo, listo para entregar.',
+              style: TextStyle(fontSize: 12, color: AppColors.muted),
+            ),
+          ),
+        ],
+
         // ORIGEN DE LOS PRODUCTOS — visible solo con cliente elegido y más
         // de una opción elegible (si Configuración de creación dejó una
         // sola, se usa directo sin mostrar nada para elegir).
-        if (cliente != null && origenesElegibles.length > 1) ...[
+        if (!simplificado && cliente != null && origenesElegibles.length > 1) ...[
           const SizedBox(height: 14),
           const _SectionLabel('Origen del pedido'),
           const SizedBox(height: 8),
@@ -218,7 +256,7 @@ Future<PedidoDetalle?> abrirNuevoPedidoSheet(
             ],
           ),
         ],
-        if (cliente != null && origen == _Origen.estandar) ...[
+        if (!simplificado && cliente != null && origen == _Origen.estandar) ...[
           const SizedBox(height: 10),
           PickerField(
             label: 'Cargar desde estándar',
@@ -395,6 +433,9 @@ Future<PedidoDetalle?> abrirNuevoPedidoSheet(
     },
     onGuardar: () async {
       if (cliente == null) throw Exception('Elegí un cliente');
+      if (simplificado && tipoSubpedido == null) {
+        throw Exception('Elegí el tipo de subpedido');
+      }
       if ((etaFecha == null) != (etaHora == null)) {
         throw Exception(
           'Completá la fecha y la hora de la ETA, o dejá las dos vacías',
@@ -433,6 +474,24 @@ Future<PedidoDetalle?> abrirNuevoPedidoSheet(
           int.parse(partes[0]),
           int.parse(partes[1]),
         );
+      }
+
+      if (simplificado) {
+        creado = await repositorio.crearSimplificado(
+          codigoPedido: _generarCodigoPedido(),
+          idCliente: cliente!.idCliente,
+          idPedidoSubpedidoTipo: tipoSubpedido!.idPedidoSubpedidoTipo,
+          idClienteSucursal: sucursal?.idSucursal,
+          observaciones: observacionesCtrl.text.trim().isEmpty
+              ? null
+              : observacionesCtrl.text.trim(),
+          idLugarEntrega: lugarEntrega?.idLugar,
+          eta: eta,
+          idVehiculoEntrega: vehiculo?.idVehiculo,
+          requierePgn: requierePgn,
+          requiereAduana: requiereAduana,
+        );
+        return;
       }
 
       final pedido = await repositorio.crear(

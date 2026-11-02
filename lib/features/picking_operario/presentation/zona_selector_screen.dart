@@ -20,9 +20,9 @@ typedef _ZonaPendiente = ({int idZona, String nombre, String codigo, int pendien
 /// subpedido en `misTareasProvider` — a propósito, NO recibe el
 /// `SubpedidoPicking` completo por `state.extra`: `extra` no sobrevive
 /// cuando go_router re-evalúa la ruta actual sin una navegación explícita
-/// (ej. cada 15s, cuando `AuthController` refresca la sesión en segundo
+/// (ej. con cada acción, cuando `AuthController` refresca la sesión en segundo
 /// plano y dispara `_AuthRefreshListenable`), lo que rompía esta pantalla
-/// con un `TypeError` si el operario se quedaba parado acá más de ~15s.
+/// con un `TypeError` si el operario se quedaba parado acá un rato.
 ///
 /// Si `PickingConfig.escaneoZonaObligatorio` está prendido (Ajustes ->
 /// Operaciones -> Picking -> "Obligatorio escanear zona"), la lista de

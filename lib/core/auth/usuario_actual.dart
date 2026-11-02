@@ -48,14 +48,14 @@ class UsuarioActual {
   /// Mismo criterio que `has_permission` en el backend (`modulo.accion`).
   bool tienePermiso(String codigo) => permissions.contains(codigo);
 
-  // Igualdad por valor — clave para que el polling de `/auth/me` cada 15s
+  // Igualdad por valor — clave para que el refresco de `/auth/me` con cada acción
   // (`AuthController._refrescarSilenciosamente`) no golpee a TODA la app:
   // Riverpod solo notifica a quien mira `authControllerProvider` cuando el
   // nuevo `AsyncData` es distinto del anterior. Sin este `==`, cada
   // instancia nueva (aunque venga con los mismos datos) se consideraba
   // "distinta" por igualdad de referencia, y como casi cada pantalla
   // consulta permisos/almacén de este objeto, se disparaba un rebuild
-  // global cada 15 segundos — el "parón" periódico. Con esto, solo se
+  // global en cada refresco — el "parón" periódico. Con esto, solo se
   // notifica (y se repintan las pantallas) cuando algo realmente cambió
   // (bloqueo, permisos, rol, almacén, etc.).
   @override

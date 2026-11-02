@@ -34,18 +34,23 @@ class _GrupoProducto {
   final double cantidadSistema;
 }
 
-/// Crea un ajuste de stock: elegir ubicación → motivo (Conteo físico /
-/// Vencimiento) → contar por producto. Siempre POR_PRODUCTO — no hay
-/// elección de modo. Los dos motivos usan el campo de cantidad distinto:
+/// "Control por ubicación" (opción a de Nuevo ajuste): elegir o escanear
+/// ubicación → contar a ciegas cada producto que hay ahí (+ agregar
+/// productos que no figuran). Siempre POR_PRODUCTO y Conteo físico.
+///
+/// Solo cuando viene de una solicitud (flujo B) aparece el paso de motivo,
+/// porque el motivo lo fija quien pidió el control y puede ser Vencimiento.
+/// Los dos motivos usan el campo de cantidad distinto:
 /// - Conteo físico: cuánto hay realmente (a ciegas, el campo arranca vacío)
 ///   → el sistema reajusta el stock (puede sumar o restar).
 /// - Vencimiento: cuánto está vencido (arranca en 0) → el sistema descuenta
 ///   esa cantidad del lote que realmente está vencido (ver
 ///   CRITERIO_RESTAR_VENCIMIENTO_MAS_CERCANO en el backend).
 ///
-/// Queda en BORRADOR y hace falta confirmar + aplicar después desde el
-/// detalle (ver `ajuste_stock_service.py`). El atajo de un solo paso para
-/// merma/consumo interno vive aparte, en `MermaRapidaScreen`.
+/// Si el usuario tiene permiso de confirmar + aplicar, se aplica apenas se
+/// crea (`puedeAplicarAjusteDirectoProvider`); si no, queda en BORRADOR para
+/// que lo termine alguien con esos permisos desde el detalle. Las otras dos opciones de Nuevo
+/// ajuste viven aparte: `ControlPorProductoScreen` y `MermaRapidaScreen`.
 class NuevoAjusteScreen extends ConsumerStatefulWidget {
   const NuevoAjusteScreen({super.key, this.solicitud});
 
@@ -87,7 +92,7 @@ class _NuevoAjusteScreenState extends ConsumerState<NuevoAjusteScreen> {
       _motivoCategoria = solicitud.motivoCategoria;
       _paso = _Paso.motivo;
     } else {
-      _motivoCategoria = motivosNuevoAjuste.first.$1;
+      _motivoCategoria = 'CONTEO_FISICO';
       _paso = _Paso.ubicacion;
     }
   }
@@ -127,10 +132,10 @@ class _NuevoAjusteScreenState extends ConsumerState<NuevoAjusteScreen> {
   }
 
   void _elegirUbicacion(UbicacionSimple u) {
-    setState(() {
-      _ubicacion = u;
-      _paso = _Paso.motivo;
-    });
+    setState(() => _ubicacion = u);
+    // Sin solicitud no hay motivo que elegir (siempre Conteo físico): directo
+    // al conteo.
+    _continuarAConteo();
   }
 
   /// Las ubicaciones no tienen código de barra separado — el `codigo` (ej.
@@ -360,7 +365,22 @@ class _NuevoAjusteScreenState extends ConsumerState<NuevoAjusteScreen> {
           idAjusteStock: idAjusteStock,
         );
       }
+      // Con permisos se confirma y aplica al toque. Si falla acá, el ajuste
+      // ya existe (queda en BORRADOR/CONFIRMADO): se avisa y se abre el
+      // detalle igual, para terminarlo a mano.
+      String? avisoAplicacion;
+      if (ref.read(puedeAplicarAjusteDirectoProvider)) {
+        try {
+          await ref.read(ajusteStockRepositoryProvider).confirmarYAplicar(idAjusteStock);
+          avisoAplicacion = 'Ajuste aplicado';
+        } catch (e) {
+          avisoAplicacion = 'El ajuste se creó pero no se pudo aplicar: ${describeError(e)}';
+        }
+      }
       if (!mounted) return;
+      if (avisoAplicacion != null) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(avisoAplicacion)));
+      }
       context.pushReplacement('/ajuste-stock/$idAjusteStock');
     } catch (e) {
       if (!mounted) return;
@@ -373,8 +393,11 @@ class _NuevoAjusteScreenState extends ConsumerState<NuevoAjusteScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Nuevo ajuste de stock')),
+      appBar: AppBar(
+        title: Text(widget.solicitud != null ? 'Control solicitado' : 'Control por ubicación'),
+      ),
       body: switch (_paso) {
+        _Paso.ubicacion when _cargandoExistencias => const Center(child: CircularProgressIndicator()),
         _Paso.ubicacion => _PasoUbicacion(
             controller: _searchController,
             onChanged: _onSearchChanged,
@@ -404,8 +427,11 @@ class _NuevoAjusteScreenState extends ConsumerState<NuevoAjusteScreen> {
             onFiltroChanged: (_) => setState(() {}),
             onEscanearProducto: _escanearProductoConteo,
             onAgregarProducto: _irAAgregarProducto,
+            observacionController: widget.solicitud == null ? _observacionController : null,
             guardando: _guardando,
-            onVolver: () => setState(() => _paso = _Paso.motivo),
+            onVolver: () => setState(
+              () => _paso = widget.solicitud != null ? _Paso.motivo : _Paso.ubicacion,
+            ),
             onCrear: _crear,
           ),
       },
@@ -622,6 +648,7 @@ class _PasoConteo extends StatelessWidget {
     required this.onFiltroChanged,
     required this.onEscanearProducto,
     required this.onAgregarProducto,
+    this.observacionController,
     required this.guardando,
     required this.onVolver,
     required this.onCrear,
@@ -637,6 +664,9 @@ class _PasoConteo extends StatelessWidget {
   final ValueChanged<String> onFiltroChanged;
   final VoidCallback onEscanearProducto;
   final VoidCallback onAgregarProducto;
+
+  /// Sin solicitud la observación se carga acá (no hay paso de motivo).
+  final TextEditingController? observacionController;
   final bool guardando;
   final VoidCallback onVolver;
   final Future<void> Function() onCrear;
@@ -657,8 +687,11 @@ class _PasoConteo extends StatelessWidget {
             .toList();
 
     final itemsExistentes = gruposFiltrados.length;
-    // +1 = botón agregar (solo en Conteo físico)
-    final totalFilas = itemsExistentes + nuevosFiltrados.length + (esVencimiento ? 0 : 1);
+    // +1 = botón agregar (solo en Conteo físico), +1 = observación
+    final totalFilas = itemsExistentes +
+        nuevosFiltrados.length +
+        (esVencimiento ? 0 : 1) +
+        (observacionController != null ? 1 : 0);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -739,13 +772,22 @@ class _PasoConteo extends StatelessWidget {
                 );
               }
 
-              // Último elemento: botón "+ Agregar producto" (solo Conteo físico)
-              return Center(
-                child: TextButton.icon(
-                  onPressed: onAgregarProducto,
-                  icon: const Icon(Icons.add),
-                  label: const Text('Agregar producto'),
-                ),
+              final idxResto = idxNuevo - nuevosFiltrados.length;
+              if (idxResto == 0 && !esVencimiento) {
+                // Botón "+ Agregar producto" (solo Conteo físico)
+                return Center(
+                  child: TextButton.icon(
+                    onPressed: onAgregarProducto,
+                    icon: const Icon(Icons.add),
+                    label: const Text('Agregar producto'),
+                  ),
+                );
+              }
+
+              return TextField(
+                controller: observacionController,
+                maxLines: 2,
+                decoration: const InputDecoration(hintText: 'Observación (opcional)'),
               );
             },
           ),

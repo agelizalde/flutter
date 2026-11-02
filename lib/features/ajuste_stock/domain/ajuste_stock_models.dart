@@ -1,4 +1,5 @@
 import '../../../core/utils/parsing.dart';
+import '../../stock/domain/stock_models.dart' show ExistenciaStock;
 
 /// Categorías de motivo de un ajuste — enum fijo en el backend (no es una
 /// tabla maestra, ver `ajuste_stock_service.py::MOTIVOS_CATEGORIA`).
@@ -24,12 +25,14 @@ const motivosNuevoAjuste = <(String value, String label)>[
   ('VENCIMIENTO', 'Vencimiento'),
 ];
 
-/// Causas del atajo "Merma" del inicio (`MermaRapidaScreen`) — a diferencia
-/// de "Nuevo ajuste", este flujo no pasa por conteo de ubicación: solo
-/// producto + cantidad + causa (ver `POST /ajuste-stock/merma-rapida`).
+/// Causas de "Mermar producto" (`MermaRapidaScreen`) — producto →
+/// ubicación → cantidad + causa, aplica directo (ver
+/// `POST /ajuste-stock/merma-rapida`, `MOTIVOS_MERMA_RAPIDA` en el backend).
 const motivosMermaRapida = <(String value, String label)>[
-  ('ROTURA', 'Merma'),
-  ('CONSUMO_INTERNO', 'Uso interno'),
+  ('ROTURA', 'Rotura'),
+  ('CONSUMO_INTERNO', 'Consumo interno'),
+  ('VENCIMIENTO', 'Vencimiento'),
+  ('OTRO', 'Otro'),
 ];
 
 String labelMotivoAjuste(String value) =>
@@ -125,6 +128,20 @@ class AjusteStock {
   bool get puedeConfirmar => estado == 'BORRADOR';
   bool get puedeAplicar => estado == 'CONFIRMADO';
   bool get puedeAnular => estado == 'BORRADOR' || estado == 'CONFIRMADO';
+
+  /// Misma ventana que `VENTANA_REVERSION_MINUTOS` en el backend: un ajuste
+  /// APLICADO se puede anular (devolviendo el stock) durante esta hora. El
+  /// backend es el que manda — mide con el reloj de la base.
+  static const ventanaReversion = Duration(minutes: 60);
+
+  /// Hasta cuándo se puede revertir (null si no está aplicado).
+  DateTime? get revertibleHasta =>
+      estado == 'APLICADO' && fechaAplicacion != null ? fechaAplicacion!.add(ventanaReversion) : null;
+
+  bool get puedeRevertir {
+    final hasta = revertibleHasta;
+    return hasta != null && DateTime.now().isBefore(hasta);
+  }
 }
 
 /// Ítem de un ajuste (ver `ajuste_stock_service.py::_get_ajuste_items`).
@@ -275,4 +292,53 @@ class AjusteItemNuevo {
   final String? loteProveedor;
   final DateTime? fechaVencimiento;
   final DateTime? fechaFaenado;
+}
+
+/// Stock de un producto en una ubicación, sumando todos sus lotes. Lo usan
+/// "Control por producto" (una fila a contar por ubicación) y "Mermar
+/// producto" (elegir de qué ubicación sale).
+class StockEnUbicacion {
+  StockEnUbicacion({
+    required this.idUbicacion,
+    required this.ubicacionNombre,
+    required this.ubicacionCodigo,
+    required this.idZona,
+    required this.idAlmacen,
+    required this.idUnidadMedida,
+    required this.unidadSimbolo,
+    required this.cantidad,
+  });
+
+  final int idUbicacion;
+  final String ubicacionNombre;
+  final String ubicacionCodigo;
+  final int? idZona;
+  final int? idAlmacen;
+  final int idUnidadMedida;
+  final String unidadSimbolo;
+  final double cantidad;
+}
+
+/// Agrupa existencias (lotes) por (ubicación, unidad), ordenado por
+/// nombre de ubicación.
+List<StockEnUbicacion> agruparPorUbicacion(List<ExistenciaStock> existencias) {
+  final grupos = <(int, int), List<ExistenciaStock>>{};
+  for (final e in existencias) {
+    grupos.putIfAbsent((e.idUbicacion, e.idUnidadMedida), () => []).add(e);
+  }
+  final out = grupos.values.map((lotes) {
+    final e = lotes.first;
+    return StockEnUbicacion(
+      idUbicacion: e.idUbicacion,
+      ubicacionNombre: e.ubicacionNombre,
+      ubicacionCodigo: e.ubicacionCodigo,
+      idZona: e.idZona,
+      idAlmacen: e.idAlmacen,
+      idUnidadMedida: e.idUnidadMedida,
+      unidadSimbolo: e.unidadSimbolo,
+      cantidad: lotes.fold<double>(0, (acc, x) => acc + x.cantidad),
+    );
+  }).toList()
+    ..sort((a, b) => a.ubicacionNombre.compareTo(b.ubicacionNombre));
+  return out;
 }

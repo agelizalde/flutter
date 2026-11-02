@@ -6,6 +6,7 @@ import '../../../app/theme.dart';
 import '../../../core/errors/app_exception.dart';
 import '../../auth/application/auth_controller.dart';
 import '../application/picking_providers.dart';
+import 'picking_ayuda.dart';
 import 'widgets/subpedido_picking_tile.dart';
 
 String _fmtDuracionCorta(Duration d) {
@@ -53,6 +54,13 @@ class PickingHomeScreen extends ConsumerWidget {
           onPressed: () => context.go('/'),
         ),
         title: const Text('Picking'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.help_outline),
+            tooltip: '¿Cómo funciona?',
+            onPressed: () => abrirAyudaPicking(context),
+          ),
+        ],
       ),
       body: RefreshIndicator(
         onRefresh: () async => ref.invalidate(misTareasProvider),

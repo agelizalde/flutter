@@ -52,8 +52,10 @@ class StockResumen {
     this.cantidadQuiebre,
     this.capacidadMaxima,
     this.obsRecepcion,
+    this.idUbicacionPreferida,
     this.ubicacionPreferidaNombre,
     this.ubicacionPreferidaCodigo,
+    this.idUbicacionAutomatica,
     this.ubicacionAutomaticaNombre,
     this.ubicacionAutomaticaCodigo,
     required this.stockTotal,
@@ -68,8 +70,10 @@ class StockResumen {
     cantidadQuiebre: parseDoubleOrNull(j['cantidad_quiebre']),
     capacidadMaxima: parseDoubleOrNull(j['capacidad_maxima']),
     obsRecepcion: j['obs_recepcion'] as String?,
+    idUbicacionPreferida: j['id_ubicacion_preferida'] as int?,
     ubicacionPreferidaNombre: j['ubicacion_preferida_nombre'] as String?,
     ubicacionPreferidaCodigo: j['ubicacion_preferida_codigo'] as String?,
+    idUbicacionAutomatica: j['id_ubicacion_automatica'] as int?,
     ubicacionAutomaticaNombre: j['ubicacion_automatica_nombre'] as String?,
     ubicacionAutomaticaCodigo: j['ubicacion_automatica_codigo'] as String?,
     stockTotal: parseDouble(j['stock_total']),
@@ -92,11 +96,13 @@ class StockResumen {
 
   /// Ubicación recomendada (`id_ubicacion_preferida`) — solo sugerencia,
   /// no cambia el comportamiento de recepción.
+  final int? idUbicacionPreferida;
   final String? ubicacionPreferidaNombre;
   final String? ubicacionPreferidaCodigo;
 
   /// Ubicación automática (`id_ubicacion_automatica`) — si está definida,
   /// la recepción va directo ahí en vez de la ubicación elegida/por defecto.
+  final int? idUbicacionAutomatica;
   final String? ubicacionAutomaticaNombre;
   final String? ubicacionAutomaticaCodigo;
 
@@ -121,6 +127,8 @@ class ExistenciaStock {
     required this.idUbicacion,
     required this.ubicacionNombre,
     required this.ubicacionCodigo,
+    this.idZona,
+    this.idAlmacen,
     required this.almacenNombre,
     required this.cantidad,
     required this.cantidadReservadaPicking,
@@ -145,6 +153,8 @@ class ExistenciaStock {
     idUbicacion: j['id_ubicacion'] as int,
     ubicacionNombre: j['ubicacion_nombre'] as String? ?? '',
     ubicacionCodigo: j['ubicacion_codigo'] as String? ?? '',
+    idZona: j['id_zona'] as int?,
+    idAlmacen: j['id_almacen'] as int?,
     almacenNombre: j['almacen_nombre'] as String? ?? '',
     cantidad: parseDouble(j['cantidad']),
     cantidadReservadaPicking: parseDouble(j['cantidad_reservada_picking']),
@@ -170,6 +180,12 @@ class ExistenciaStock {
   final int idUbicacion;
   final String ubicacionNombre;
   final String ubicacionCodigo;
+
+  /// Necesarios para armar el header de un ajuste de stock desde una
+  /// existencia (Control por producto). `id_zona` se agregó a
+  /// `GET /stock/existencias` el 2026-10-28 — null contra un backend viejo.
+  final int? idZona;
+  final int? idAlmacen;
   final String almacenNombre;
   final double cantidad;
   final double cantidadReservadaPicking;
@@ -308,6 +324,8 @@ class ProductoDetalle {
     required this.unidadPesable,
     this.claseProducto,
     this.fotoUrl,
+    this.rowVersion,
+    this.manejaStock = true,
   });
 
   factory ProductoDetalle.fromJson(Map<String, dynamic> j) => ProductoDetalle(
@@ -325,6 +343,8 @@ class ProductoDetalle {
     unidadPesable: j['unidad_pesable'] == 1 || j['unidad_pesable'] == true,
     claseProducto: j['clase_producto'] as String?,
     fotoUrl: j['foto_url'] as String?,
+    rowVersion: j['row_version'] as int?,
+    manejaStock: j['maneja_stock'] == null || j['maneja_stock'] == 1 || j['maneja_stock'] == true,
   );
 
   final int idProducto;
@@ -351,6 +371,13 @@ class ProductoDetalle {
   /// Foto principal (`productos_fotos`, `es_principal=1`) — mismo criterio
   /// que `ProductoSimple.fotoUrl`, resolver con `Env.resolveStorageUrl`.
   final String? fotoUrl;
+
+  /// `expected_version` de `PATCH /productos/{id}` (editar capacidad/
+  /// ubicaciones/obs. de recepción desde la ficha).
+  final int? rowVersion;
+
+  /// Solo los productos que manejan stock tienen `productos_almacenaje`.
+  final bool manejaStock;
 }
 
 /// `almacenaje` de `GET /productos/{id}` — flags que determinan qué
@@ -374,6 +401,39 @@ class ProductoAlmacenaje {
   final bool requiereLote;
   final bool requiereVencimiento;
   final bool requiereFechaFaena;
+}
+
+/// Fila de `GET /compras/oc/ultimas-compras` (`oc_ultimas_compras_producto`):
+/// precio unitario del producto en una OC APROBADA/CERRADA. El precio está
+/// en la moneda y unidad de esa OC, no necesariamente en la unidad base.
+class CompraProducto {
+  CompraProducto({
+    required this.idOc,
+    required this.codigoOc,
+    this.fechaEmision,
+    required this.proveedorNombre,
+    required this.monedaSimbolo,
+    required this.unidadSimbolo,
+    required this.precioUnitario,
+  });
+
+  factory CompraProducto.fromJson(Map<String, dynamic> j) => CompraProducto(
+    idOc: j['id_oc'] as int,
+    codigoOc: j['codigo'] as String? ?? '',
+    fechaEmision: parseDateOrNull(j['fecha_emision']),
+    proveedorNombre: j['proveedor_nombre'] as String? ?? '',
+    monedaSimbolo: j['moneda_simbolo'] as String? ?? '',
+    unidadSimbolo: j['unidad_simbolo'] as String? ?? '',
+    precioUnitario: parseDouble(j['precio_unitario']),
+  );
+
+  final int idOc;
+  final String codigoOc;
+  final DateTime? fechaEmision;
+  final String proveedorNombre;
+  final String monedaSimbolo;
+  final String unidadSimbolo;
+  final double precioUnitario;
 }
 
 /// Composición de las 3 llamadas que arman la pantalla de detalle:

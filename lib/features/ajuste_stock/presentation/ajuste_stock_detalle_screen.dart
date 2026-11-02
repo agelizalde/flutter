@@ -118,6 +118,60 @@ class AjusteStockDetalleScreen extends ConsumerWidget {
     }
   }
 
+  /// Anula un ajuste APLICADO devolviendo el stock (`POST .../revertir`).
+  /// Solo se ofrece dentro de la hora siguiente a la aplicación.
+  Future<void> _revertir(BuildContext context, WidgetRef ref, AjusteStock ajuste) async {
+    final motivoController = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Anular ajuste'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('El stock vuelve a como estaba antes de este ajuste. Esta acción no se puede deshacer.'),
+            const SizedBox(height: 12),
+            TextField(
+              controller: motivoController,
+              decoration: const InputDecoration(hintText: 'Motivo (opcional)'),
+              maxLines: 2,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancelar')),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.erTx),
+            child: const Text('Anular'),
+          ),
+        ],
+      ),
+    );
+    final motivo = motivoController.text.trim();
+    motivoController.dispose();
+    if (ok != true) return;
+
+    try {
+      await ref.read(ajusteStockRepositoryProvider).revertir(
+        idAjusteStock: idAjusteStock,
+        expectedVersion: ajuste.rowVersion,
+        motivo: motivo.isEmpty ? null : motivo,
+      );
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Ajuste anulado, el stock volvió a como estaba')),
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(describeError(e))));
+    } finally {
+      ref.invalidate(ajusteStockDetalleProvider(idAjusteStock));
+      ref.invalidate(ajustesStockListadoProvider);
+    }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final async = ref.watch(ajusteStockDetalleProvider(idAjusteStock));
@@ -190,6 +244,21 @@ class AjusteStockDetalleScreen extends ConsumerWidget {
                     style: OutlinedButton.styleFrom(side: const BorderSide(color: AppColors.erTx)),
                   ),
                 ],
+                if (ajuste.puedeRevertir && puedeAnular) ...[
+                  const SizedBox(height: 20),
+                  OutlinedButton.icon(
+                    onPressed: () => _revertir(context, ref, ajuste),
+                    icon: const Icon(Icons.undo, size: 20, color: AppColors.erTx),
+                    label: const Text('Anular ajuste', style: TextStyle(color: AppColors.erTx)),
+                    style: OutlinedButton.styleFrom(side: const BorderSide(color: AppColors.erTx)),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Se puede anular hasta las ${_hora(ajuste.revertibleHasta!)}',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 12, color: AppColors.muted),
+                  ),
+                ],
               ],
             ),
           );
@@ -198,6 +267,9 @@ class AjusteStockDetalleScreen extends ConsumerWidget {
     );
   }
 }
+
+String _hora(DateTime f) =>
+    '${f.hour.toString().padLeft(2, '0')}:${f.minute.toString().padLeft(2, '0')}';
 
 class _HeaderCard extends StatelessWidget {
   const _HeaderCard({required this.ajuste});
@@ -252,7 +324,7 @@ class _HeaderCard extends StatelessWidget {
           if (ajuste.usuarioConteoUsername != null)
             _InfoRow(icon: Icons.person_outline, texto: 'Contó: ${ajuste.usuarioConteoUsername}'),
           if (ajuste.fechaAplicacion != null)
-            _InfoRow(icon: Icons.published_with_changes, texto: 'Aplicado: ${formatFecha(ajuste.fechaAplicacion!)}'),
+            _InfoRow(icon: Icons.published_with_changes, texto: 'Aplicado: ${formatFechaHora(ajuste.fechaAplicacion!)}'),
           if (ajuste.usuarioAplicacionUsername != null)
             _InfoRow(icon: Icons.person_outline, texto: 'Aplicó: ${ajuste.usuarioAplicacionUsername}'),
           if (ajuste.observaciones != null && ajuste.observaciones!.isNotEmpty) ...[

@@ -8,6 +8,23 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// `ImpresoraConfigStore` (features/produccion).
 class ServidorConfigStore {
   static const _kUrl = 'core_servidor_base_url';
+  static const _kFijarErp = 'core_servidor_fijar_erp';
+
+  /// Terminal que solo opera dentro de la empresa: nunca cae a `public.`
+  /// (ver `Env.fijoEnErp`). Default `false` — la auto-detección normal.
+  Future<bool> leerFijarErp() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_kFijarErp) ?? false;
+  }
+
+  Future<void> guardarFijarErp(bool valor) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (valor) {
+      await prefs.setBool(_kFijarErp, true);
+    } else {
+      await prefs.remove(_kFijarErp);
+    }
+  }
 
   Future<String?> leer() async {
     final prefs = await SharedPreferences.getInstance();

@@ -31,6 +31,30 @@ class FirmaSolicitudDetalleScreen extends ConsumerWidget {
     FirmaSolicitud solicitud, {
     String label = 'Aprobar',
   }) async {
+    // Entrega de pedido: "Entregado bien" permite dejar una observación
+    // opcional — viaja como `motivo` del aprobar (el backend ya lo guarda en
+    // la solicitud y en el historial del subpedido, ver
+    // subpedido_entrega_firma_hook.py).
+    if (solicitud.esPedidoEntrega) {
+      final observacion = await showModalBottomSheet<String>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (_) => const _MotivoFirmaSheet(
+          titulo: 'Entregado bien',
+          subtitulo: 'Podés dejar una observación (opcional).',
+          etiquetaCampo: 'Observación',
+          textoBoton: 'Confirmar entrega',
+          colorBoton: AppColors.okTx,
+          obligatorio: false,
+        ),
+      );
+      if (observacion == null) return;
+      if (!context.mounted) return;
+      await _enviarAprobacion(context, ref, solicitud, motivo: observacion.isEmpty ? null : observacion);
+      return;
+    }
+
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -43,11 +67,20 @@ class FirmaSolicitudDetalleScreen extends ConsumerWidget {
       ),
     );
     if (ok != true) return;
+    if (!context.mounted) return;
+    await _enviarAprobacion(context, ref, solicitud);
+  }
 
+  Future<void> _enviarAprobacion(
+    BuildContext context,
+    WidgetRef ref,
+    FirmaSolicitud solicitud, {
+    String? motivo,
+  }) async {
     try {
       await ref
           .read(firmasRepositoryProvider)
-          .aprobar(idFirmaSolicitud: solicitud.idFirmaSolicitud, expectedVersion: solicitud.rowVersion);
+          .aprobar(idFirmaSolicitud: solicitud.idFirmaSolicitud, expectedVersion: solicitud.rowVersion, motivo: motivo);
       ref.invalidate(firmaSolicitudDetalleProvider(solicitud.idFirmaSolicitud));
       ref.invalidate(firmasPendientesProvider);
       if (!context.mounted) return;
@@ -63,7 +96,7 @@ class FirmaSolicitudDetalleScreen extends ConsumerWidget {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => const _RechazarFirmaSheet(),
+      builder: (_) => const _MotivoFirmaSheet(),
     );
     if (motivo == null) return;
 
@@ -330,7 +363,10 @@ class _EntregaPedidoCard extends ConsumerWidget {
               ],
               if (solicitud.motivo != null && solicitud.motivo!.isNotEmpty) ...[
                 const Divider(height: 20, color: AppColors.border),
-                _Dato(etiqueta: 'Motivo', valor: solicitud.motivo!),
+                _Dato(
+                  etiqueta: solicitud.estado == 'APROBADO' ? 'Observación' : 'Motivo',
+                  valor: solicitud.motivo!,
+                ),
               ],
             ],
           );
@@ -1444,14 +1480,32 @@ class _EstadoBadge extends StatelessWidget {
   }
 }
 
-class _RechazarFirmaSheet extends StatefulWidget {
-  const _RechazarFirmaSheet();
+/// Pide un texto al resolver una firma. Por defecto es el rechazo (motivo
+/// obligatorio); con `obligatorio: false` sirve para "Entregado bien" con
+/// observación opcional — devuelve `''` si se confirma sin escribir nada y
+/// `null` si se cierra sin confirmar.
+class _MotivoFirmaSheet extends StatefulWidget {
+  const _MotivoFirmaSheet({
+    this.titulo = 'Rechazar solicitud',
+    this.subtitulo = 'El motivo es obligatorio.',
+    this.etiquetaCampo = 'Motivo del rechazo',
+    this.textoBoton = 'Confirmar rechazo',
+    this.colorBoton = AppColors.erTx,
+    this.obligatorio = true,
+  });
+
+  final String titulo;
+  final String subtitulo;
+  final String etiquetaCampo;
+  final String textoBoton;
+  final Color colorBoton;
+  final bool obligatorio;
 
   @override
-  State<_RechazarFirmaSheet> createState() => _RechazarFirmaSheetState();
+  State<_MotivoFirmaSheet> createState() => _MotivoFirmaSheetState();
 }
 
-class _RechazarFirmaSheetState extends State<_RechazarFirmaSheet> {
+class _MotivoFirmaSheetState extends State<_MotivoFirmaSheet> {
   final _motivoController = TextEditingController();
   String? _error;
 
@@ -1463,7 +1517,7 @@ class _RechazarFirmaSheetState extends State<_RechazarFirmaSheet> {
 
   void _confirmar() {
     final motivo = _motivoController.text.trim();
-    if (motivo.isEmpty) {
+    if (motivo.isEmpty && widget.obligatorio) {
       setState(() => _error = 'El motivo es obligatorio para rechazar');
       return;
     }
@@ -1493,18 +1547,19 @@ class _RechazarFirmaSheetState extends State<_RechazarFirmaSheet> {
                   decoration: BoxDecoration(color: AppColors.border, borderRadius: BorderRadius.circular(999)),
                 ),
               ),
-              const Text(
-                'Rechazar solicitud',
-                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: AppColors.text),
+              Text(
+                widget.titulo,
+                style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: AppColors.text),
               ),
               const SizedBox(height: 4),
-              const Text('El motivo es obligatorio.', style: TextStyle(fontSize: 13, color: AppColors.muted)),
+              Text(widget.subtitulo, style: const TextStyle(fontSize: 13, color: AppColors.muted)),
               const SizedBox(height: 16),
               TextField(
                 controller: _motivoController,
-                autofocus: true,
+                autofocus: widget.obligatorio,
                 maxLines: 3,
-                decoration: const InputDecoration(labelText: 'Motivo del rechazo'),
+                maxLength: 500,
+                decoration: InputDecoration(labelText: widget.etiquetaCampo),
               ),
               if (_error != null) ...[
                 const SizedBox(height: 8),
@@ -1513,8 +1568,8 @@ class _RechazarFirmaSheetState extends State<_RechazarFirmaSheet> {
               const SizedBox(height: 18),
               ElevatedButton(
                 onPressed: _confirmar,
-                style: ElevatedButton.styleFrom(backgroundColor: AppColors.erTx),
-                child: const Text('Confirmar rechazo'),
+                style: ElevatedButton.styleFrom(backgroundColor: widget.colorBoton),
+                child: Text(widget.textoBoton),
               ),
             ],
           ),

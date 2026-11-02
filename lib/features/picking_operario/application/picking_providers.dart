@@ -1,8 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/notificaciones_ws_provider.dart';
 import '../../../core/providers.dart';
-import '../../../core/utils/silent_refresh.dart';
+import '../../../core/utils/refresco_por_accion.dart';
 import '../../auth/application/auth_controller.dart';
 import '../data/picking_api.dart';
 import '../data/picking_repository.dart';
@@ -25,16 +27,24 @@ bool _esEventoPickingAsignado(Map<String, dynamic> evento) {
       (evento['tipo'] == 'PICKING_ASIGNADO' || evento['tipo'] == 'PICKING_REASIGNADO');
 }
 
-/// Mis tareas + sesión activa. Con `enableSilentRefresh` como red de
-/// respaldo (20s) y, además, invalidación instantánea apenas llega un
-/// evento de asignación por `notificacionesWsProvider` — igual que
-/// `firmasPendientesProvider`. Además de mantener la lista al día, cada
-/// `GET /mis-tareas` hace `GET .../zona/sesion/activa` server-side, que ya
-/// actualiza `ultima_actividad_en`: este mismo provider actúa como
-/// heartbeat de la sesión mientras `PickingTrabajoScreen` está abierta, sin
-/// necesitar un timer de heartbeat separado.
+/// Mis tareas + sesión activa. Se refresca con cada acción del usuario
+/// (`refrescarEnAcciones`) y apenas llega un evento de asignación por
+/// `notificacionesWsProvider` — igual que `firmasPendientesProvider`.
+///
+/// Heartbeat de la sesión de zona: antes lo hacía el polling de esta misma
+/// lista (cada `GET` actualiza `ultima_actividad_en` server-side). Sin
+/// polling, un operario parado en la pantalla sin pickear nada perdería la
+/// sesión por inactividad (`sesion_idle_timeout_minutos`, default 10), así
+/// que se pega a `/zona/sesion/activa` cada minuto IGNORANDO la respuesta:
+/// mantiene viva la sesión sin tocar la UI.
 final misTareasProvider = FutureProvider.autoDispose<MisTareasResponse>((ref) {
-  enableSilentRefresh(ref, interval: const Duration(seconds: 20));
+  refrescarEnAcciones(ref);
+
+  final repo = ref.watch(pickingRepositoryProvider);
+  final heartbeat = Timer.periodic(const Duration(minutes: 1), (_) {
+    repo.sesionActiva().catchError((_) => null);
+  });
+  ref.onDispose(heartbeat.cancel);
 
   ref.listen(notificacionesWsProvider, (previous, next) {
     final evento = next.value;
@@ -75,9 +85,8 @@ final pickingAppHabilitadoProvider = FutureProvider.autoDispose<bool>((ref) asyn
 });
 
 /// Tareas de devolución/despickeo pendientes para el usuario logueado — se
-/// refresca cada 20s igual que [misTareasProvider] mientras la pantalla que
-/// lo mira esté abierta.
+/// refresca con cada acción del usuario, igual que [misTareasProvider].
 final tareasDespickeoProvider = FutureProvider.autoDispose<List<TareaDespickeo>>((ref) {
-  enableSilentRefresh(ref, interval: const Duration(seconds: 20));
+  refrescarEnAcciones(ref);
   return ref.watch(pickingRepositoryProvider).misTareasDespickeo();
 });

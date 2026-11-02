@@ -1,5 +1,7 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
+
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 /// Guarda el JWT y datos mínimos de sesión fuera de shared_prefs plano.
@@ -81,7 +83,9 @@ class SecureStorage {
 /// Construye el [SecureStorage] de la app con las opciones por plataforma
 /// (ver comentario de la clase).
 SecureStorage crearSecureStorage() {
-  if (!Platform.isIOS) return SecureStorage(const FlutterSecureStorage());
+  // `Platform` de dart:io tira "Unsupported operation" en web — chequear
+  // `kIsWeb` primero para que `flutter run -d chrome` no rompa al loguear.
+  if (kIsWeb || !Platform.isIOS) return SecureStorage(const FlutterSecureStorage());
   return SecureStorage(
     const FlutterSecureStorage(iOptions: IOSOptions(accessibility: KeychainAccessibility.first_unlock)),
     const FlutterSecureStorage(),

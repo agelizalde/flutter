@@ -2,7 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:riverpod/legacy.dart';
 
-import '../../../core/utils/silent_refresh.dart';
+import '../../../core/utils/refresco_por_accion.dart';
 import '../../picking_operario/application/picking_providers.dart';
 import '../../picking_operario/domain/picking_models.dart';
 import '../../recepcion/application/recepcion_providers.dart';
@@ -24,7 +24,7 @@ final escanerQueryProvider = StateProvider<String>((ref) => '');
 /// quedan afuera los ficticios (`esComercial: false`).
 final escanerProductosResultsProvider =
     FutureProvider.autoDispose<List<ProductoSimple>>((ref) {
-      enableSilentRefresh(ref);
+      refrescarEnAcciones(ref);
       final q = ref.watch(escanerQueryProvider).trim();
       if (q.isEmpty) return Future.value(const []);
       return ref.watch(productosApiProvider).buscar(q: q, manejaStock: null, esComercial: false);
@@ -32,7 +32,7 @@ final escanerProductosResultsProvider =
 
 final escanerUbicacionesResultsProvider =
     FutureProvider.autoDispose<List<UbicacionStock>>((ref) {
-      enableSilentRefresh(ref);
+      refrescarEnAcciones(ref);
       final q = ref.watch(escanerQueryProvider).trim();
       if (q.isEmpty) return Future.value(const []);
       return ref.watch(stockRepositoryProvider).buscarUbicaciones(q);
@@ -43,10 +43,28 @@ final escanerUbicacionesResultsProvider =
 /// acá se pega directo a `ZonasApi` en vez de pasar por un repositorio.
 final escanerZonasResultsProvider =
     FutureProvider.autoDispose<List<ZonaSimple>>((ref) {
-      enableSilentRefresh(ref);
+      refrescarEnAcciones(ref);
       final q = ref.watch(escanerQueryProvider).trim();
       if (q.isEmpty) return Future.value(const []);
       return ref.watch(zonasApiProvider).buscar(q: q);
+    });
+
+/// Proveedores por nombre/código — reemplaza el modo "Proveedor" de la
+/// pantalla de Stock (que ya no tiene tarjeta en el Home): tocar uno abre
+/// sus productos (`/stock/proveedor/:id`). Mismo criterio de 403 que OC/
+/// cajón: sin permiso de proveedores esta rama queda vacía y no tapa el
+/// resto de los resultados.
+final escanerProveedoresResultsProvider =
+    FutureProvider.autoDispose<List<ProveedorSimple>>((ref) async {
+      refrescarEnAcciones(ref);
+      final q = ref.watch(escanerQueryProvider).trim();
+      if (q.isEmpty) return const [];
+      try {
+        return await ref.watch(stockRepositoryProvider).buscarProveedores(q);
+      } catch (e) {
+        if (e is DioException && e.response?.statusCode == 403) return const [];
+        rethrow;
+      }
     });
 
 /// La OC solo se resuelve por código exacto (no hay búsqueda parcial de OC

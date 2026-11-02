@@ -45,6 +45,36 @@ class PedidosRepository {
     requiereAduana: requiereAduana,
   );
 
+  Future<PedidoDetalle> crearSimplificado({
+    required String codigoPedido,
+    required int idCliente,
+    required int idPedidoSubpedidoTipo,
+    int? idClienteSucursal,
+    String? observaciones,
+    int? idLugarEntrega,
+    DateTime? eta,
+    int? idVehiculoEntrega,
+    bool requierePgn = false,
+    bool requiereAduana = false,
+  }) => _pedidosApi.crearSimplificado(
+    codigoPedido: codigoPedido,
+    idCliente: idCliente,
+    idPedidoSubpedidoTipo: idPedidoSubpedidoTipo,
+    idClienteSucursal: idClienteSucursal,
+    observaciones: observaciones,
+    idLugarEntrega: idLugarEntrega,
+    eta: eta,
+    idVehiculoEntrega: idVehiculoEntrega,
+    requierePgn: requierePgn,
+    requiereAduana: requiereAduana,
+  );
+
+  Future<PedidoDetalle> entregarSimplificado(int idPedido) =>
+      _pedidosApi.entregarSimplificado(idPedido);
+
+  Future<List<SubpedidoTipoSimple>> tiposSubpedidoListar({String? q}) =>
+      _pedidosApi.tiposSubpedidoListar(q: q);
+
   Future<PedidosConfigCreacion> configCreacion() =>
       _pedidosApi.configCreacion();
 

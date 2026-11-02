@@ -35,6 +35,7 @@ class StockApi {
   Future<List<ExistenciaStock>> existencias({
     int? idProducto,
     int? idUbicacion,
+    int? idAlmacen,
     String? q,
     int limit = 100,
   }) async {
@@ -43,6 +44,7 @@ class StockApi {
       queryParameters: {
         'id_producto': ?idProducto,
         'id_ubicacion': ?idUbicacion,
+        'id_almacen': ?idAlmacen,
         if (q != null && q.isNotEmpty) 'q': q,
         'limit': limit,
       },

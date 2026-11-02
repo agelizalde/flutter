@@ -2,7 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/notificaciones_ws_provider.dart';
 import '../../../core/providers.dart';
-import '../../../core/utils/silent_refresh.dart';
+import '../../../core/utils/refresco_por_accion.dart';
 import '../../auth/application/auth_controller.dart';
 import '../data/firmas_api.dart';
 import '../data/firmas_repository.dart';
@@ -68,12 +68,10 @@ final opDetalleRepositoryProvider = Provider<OpDetalleRepository>((ref) {
 ///
 /// Piloto de tiempo real: escucha `notificacionesWsProvider` y se invalida
 /// apenas llega un evento `FIRMAS_SOLICITUD` (nueva solicitud creada, ver
-/// `firmas_solicitudes.py`), en vez de esperar el próximo poll. El
-/// `enableSilentRefresh` de acá abajo queda como red de respaldo con
-/// intervalo más largo — si el WS se cae y no logra reconectar, la lista
-/// igual se termina actualizando sola.
+/// `firmas_solicitudes.py`). Además se refresca con cada acción del
+/// usuario (`refrescarEnAcciones`) — ya no hay polling periódico.
 final firmasPendientesProvider = FutureProvider.autoDispose<List<FirmaSolicitud>>((ref) async {
-  enableSilentRefresh(ref, interval: const Duration(seconds: 60));
+  refrescarEnAcciones(ref);
 
   ref.listen(notificacionesWsProvider, (previous, next) {
     final evento = next.value;

@@ -5,6 +5,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../app/theme.dart';
 import '../../../core/config/env.dart';
 import '../../../core/utils/parsing.dart';
+import '../../../core/widgets/selector_sheet.dart';
+import '../../auth/application/auth_controller.dart';
+import '../../recepcion/domain/recepcion_models.dart' show UbicacionSimple;
 import '../application/stock_providers.dart';
 import '../domain/stock_models.dart';
 
@@ -137,14 +140,18 @@ class _Contenido extends StatelessWidget {
   }
 }
 
-class _Hero extends StatelessWidget {
+class _Hero extends ConsumerWidget {
   const _Hero({required this.producto, required this.resumen});
 
   final ProductoDetalle producto;
   final StockResumen resumen;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final usuario = ref.watch(authControllerProvider).value;
+    // Mismos permisos que exige `GET /compras/oc/ultimas-compras`.
+    final puedeVerPrecios =
+        (usuario?.tienePermiso('oc.ver') ?? false) || (usuario?.tienePermiso('oc.crear') ?? false);
     final esServicio = producto.claseProducto == 'SERVICIO';
     final claseLabel = switch (producto.claseProducto) {
       'SERVICIO' => 'Servicio',
@@ -170,27 +177,29 @@ class _Hero extends StatelessWidget {
           children: [
             const SizedBox(height: 8),
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                InkWell(
-                  borderRadius: BorderRadius.circular(999),
+                _HeroBoton(
+                  icono: Icons.arrow_back,
+                  tooltip: 'Volver',
                   onTap: () => Navigator.of(context).maybePop(),
-                  child: const Padding(
-                    padding: EdgeInsets.all(4),
-                    child: Icon(Icons.arrow_back, color: Colors.white, size: 22),
-                  ),
                 ),
-                InkWell(
-                  borderRadius: BorderRadius.circular(999),
-                  onTap: () => _mostrarInfoExtra(context, resumen: resumen),
-                  child: const Padding(
-                    padding: EdgeInsets.all(4),
-                    child: Icon(Icons.settings_outlined, color: Colors.white, size: 22),
+                const Spacer(),
+                if (puedeVerPrecios) ...[
+                  _HeroBoton(
+                    icono: Icons.attach_money,
+                    tooltip: 'Últimas compras',
+                    onTap: () => _mostrarUltimasCompras(context, producto: producto),
                   ),
+                  const SizedBox(width: 8),
+                ],
+                _HeroBoton(
+                  icono: Icons.settings_outlined,
+                  tooltip: 'Capacidad, ubicación y recepción',
+                  onTap: () => _mostrarInfoExtra(context, producto: producto, resumen: resumen),
                 ),
               ],
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 14),
             Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
@@ -248,6 +257,34 @@ class _Hero extends StatelessWidget {
               ],
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Botón redondo translúcido de la barra superior del hero.
+class _HeroBoton extends StatelessWidget {
+  const _HeroBoton({required this.icono, required this.tooltip, required this.onTap});
+
+  final IconData icono;
+  final String tooltip;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: Colors.white.withValues(alpha: 0.12),
+        shape: const CircleBorder(),
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(8),
+            child: Icon(icono, color: Colors.white, size: 20),
+          ),
         ),
       ),
     );
@@ -522,39 +559,48 @@ class _KpiBox extends StatelessWidget {
 
 /// Bottom sheet con los datos de depósito que no entran en el hero:
 /// capacidad máxima, ubicación recomendada, ubicación automática y
-/// observación de recepción (`productos_almacenaje`, se configuran desde
-/// la ficha web del producto, pestaña "Depósito").
-void _mostrarInfoExtra(BuildContext context, {required StockResumen resumen}) {
+/// observación de recepción (`productos_almacenaje`). Con `productos.editar`
+/// — mismo permiso que la pestaña "Depósito" de la ficha web
+/// (`DepositoProducto.jsx`) — se pueden editar desde acá.
+void _mostrarInfoExtra(
+  BuildContext context, {
+  required ProductoDetalle producto,
+  required StockResumen resumen,
+}) {
   showModalBottomSheet<void>(
     context: context,
+    isScrollControlled: true,
     backgroundColor: Colors.transparent,
-    builder: (context) => _InfoExtraSheet(resumen: resumen),
+    builder: (context) => _InfoExtraSheet(producto: producto, resumen: resumen),
   );
 }
 
-class _InfoExtraSheet extends StatelessWidget {
-  const _InfoExtraSheet({required this.resumen});
+/// Bottom sheet "$": precio unitario de las últimas 3 compras (OC
+/// APROBADA/CERRADA) del producto. Solo visible con `oc.ver` u `oc.crear`.
+void _mostrarUltimasCompras(BuildContext context, {required ProductoDetalle producto}) {
+  showModalBottomSheet<void>(
+    context: context,
+    backgroundColor: Colors.transparent,
+    builder: (context) => _UltimasComprasSheet(idProducto: producto.idProducto),
+  );
+}
 
-  final StockResumen resumen;
+/// `formatGs` arma el separador de miles; acá se cambia el prefijo por la
+/// moneda real de la OC (puede ser USD).
+String _formatPrecio(double valor, String monedaSimbolo) {
+  final numero = formatGs(valor).replaceFirst('Gs. ', '');
+  return monedaSimbolo.isEmpty ? numero : '$monedaSimbolo $numero';
+}
 
-  String? get _ubicacionRecomendada {
-    if (resumen.ubicacionPreferidaNombre == null) return null;
-    final codigo = resumen.ubicacionPreferidaCodigo;
-    return codigo != null && codigo.isNotEmpty
-        ? '$codigo — ${resumen.ubicacionPreferidaNombre}'
-        : resumen.ubicacionPreferidaNombre;
-  }
+class _UltimasComprasSheet extends ConsumerWidget {
+  const _UltimasComprasSheet({required this.idProducto});
 
-  String? get _ubicacionAutomatica {
-    if (resumen.ubicacionAutomaticaNombre == null) return null;
-    final codigo = resumen.ubicacionAutomaticaCodigo;
-    return codigo != null && codigo.isNotEmpty
-        ? '$codigo — ${resumen.ubicacionAutomaticaNombre}'
-        : resumen.ubicacionAutomaticaNombre;
-  }
+  final int idProducto;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final async = ref.watch(ultimasComprasProvider(idProducto));
+
     return SafeArea(
       child: Container(
         margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
@@ -579,37 +625,443 @@ class _InfoExtraSheet extends StatelessWidget {
               ),
             ),
             const Text(
-              'Capacidad, ubicación y recepción',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w800,
-                color: AppColors.text,
-              ),
+              'Últimas compras',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.text),
             ),
             const SizedBox(height: 16),
-            _InfoExtraFila(
-              icono: Icons.inventory_2_outlined,
-              etiqueta: 'Capacidad máxima',
-              valor: resumen.capacidadMaxima != null
-                  ? '${formatCantidad(resumen.capacidadMaxima!, pesable: true)} ${resumen.unidadSimbolo}'
-                  : null,
-            ),
-            _InfoExtraFila(
-              icono: Icons.push_pin_outlined,
-              etiqueta: 'Ubicación recomendada',
-              valor: _ubicacionRecomendada,
-            ),
-            _InfoExtraFila(
-              icono: Icons.route_outlined,
-              etiqueta: 'Ubicación automática',
-              valor: _ubicacionAutomatica,
-            ),
-            _InfoExtraFila(
-              icono: Icons.info_outline,
-              etiqueta: 'Observación de recepción',
-              valor: resumen.obsRecepcion,
+            async.when(
+              loading: () => const Padding(
+                padding: EdgeInsets.symmetric(vertical: 24),
+                child: Center(child: CircularProgressIndicator()),
+              ),
+              error: (e, _) => Padding(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                child: Text(describeError(e), style: const TextStyle(color: AppColors.erTx)),
+              ),
+              data: (compras) => compras.isEmpty
+                  ? const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 12),
+                      child: Text(
+                        'No hay compras registradas de este producto',
+                        style: TextStyle(color: AppColors.muted),
+                      ),
+                    )
+                  : Column(
+                      children: [
+                        const Padding(
+                          padding: EdgeInsets.only(bottom: 8),
+                          child: Row(
+                            children: [
+                              SizedBox(width: 78, child: _CompraHeader('Fecha')),
+                              Expanded(child: _CompraHeader('Proveedor')),
+                              _CompraHeader('Precio u.'),
+                            ],
+                          ),
+                        ),
+                        for (final c in compras)
+                          Container(
+                            padding: const EdgeInsets.symmetric(vertical: 10),
+                            decoration: const BoxDecoration(
+                              border: Border(top: BorderSide(color: AppColors.soft)),
+                            ),
+                            child: Row(
+                              children: [
+                                SizedBox(
+                                  width: 78,
+                                  child: Text(
+                                    c.fechaEmision != null ? formatFecha(c.fechaEmision!) : '—',
+                                    style: const TextStyle(fontSize: 13, color: AppColors.sub),
+                                  ),
+                                ),
+                                Expanded(
+                                  child: Text(
+                                    c.proveedorNombre,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                      color: AppColors.text,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: [
+                                    Text(
+                                      _formatPrecio(c.precioUnitario, c.monedaSimbolo),
+                                      style: const TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w800,
+                                        color: AppColors.text,
+                                      ),
+                                    ),
+                                    if (c.unidadSimbolo.isNotEmpty)
+                                      Text(
+                                        'por ${c.unidadSimbolo}',
+                                        style: const TextStyle(fontSize: 11, color: AppColors.muted),
+                                      ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                      ],
+                    ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CompraHeader extends StatelessWidget {
+  const _CompraHeader(this.texto);
+
+  final String texto;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      texto.toUpperCase(),
+      style: const TextStyle(
+        fontSize: 10,
+        fontWeight: FontWeight.w700,
+        letterSpacing: 0.8,
+        color: AppColors.muted,
+      ),
+    );
+  }
+}
+
+String? _ubicacionLabel(String? codigo, String? nombre) {
+  if (nombre == null) return null;
+  return codigo != null && codigo.isNotEmpty ? '$codigo — $nombre' : nombre;
+}
+
+class _InfoExtraSheet extends ConsumerStatefulWidget {
+  const _InfoExtraSheet({required this.producto, required this.resumen});
+
+  final ProductoDetalle producto;
+  final StockResumen resumen;
+
+  @override
+  ConsumerState<_InfoExtraSheet> createState() => _InfoExtraSheetState();
+}
+
+class _InfoExtraSheetState extends ConsumerState<_InfoExtraSheet> {
+  bool _editando = false;
+  bool _guardando = false;
+  String? _error;
+
+  final _capacidad = TextEditingController();
+  final _obs = TextEditingController();
+  int? _idPreferida;
+  String? _labelPreferida;
+  int? _idAutomatica;
+  String? _labelAutomatica;
+
+  StockResumen get _r => widget.resumen;
+
+  @override
+  void dispose() {
+    _capacidad.dispose();
+    _obs.dispose();
+    super.dispose();
+  }
+
+  void _empezarEdicion() {
+    setState(() {
+      _capacidad.text = _r.capacidadMaxima != null ? formatCantidad(_r.capacidadMaxima!, pesable: true) : '';
+      _obs.text = _r.obsRecepcion ?? '';
+      _idPreferida = _r.idUbicacionPreferida;
+      _labelPreferida = _ubicacionLabel(_r.ubicacionPreferidaCodigo, _r.ubicacionPreferidaNombre);
+      _idAutomatica = _r.idUbicacionAutomatica;
+      _labelAutomatica = _ubicacionLabel(_r.ubicacionAutomaticaCodigo, _r.ubicacionAutomaticaNombre);
+      _error = null;
+      _editando = true;
+    });
+  }
+
+  Future<UbicacionSimple?> _elegirUbicacion(String titulo, int? actual) {
+    final repo = ref.read(stockRepositoryProvider);
+    return showSelectorSheet<UbicacionSimple>(
+      context,
+      titulo: titulo,
+      cargar: (q) => repo.buscarUbicacionesCatalogo(q),
+      etiqueta: (u) => _ubicacionLabel(u.codigo, u.nombre) ?? '',
+      esIgual: (u) => u.idUbicacion == actual,
+    );
+  }
+
+  Future<void> _guardar() async {
+    final textoCapacidad = _capacidad.text.trim().replaceAll(',', '.');
+    double? capacidad;
+    if (textoCapacidad.isNotEmpty) {
+      capacidad = double.tryParse(textoCapacidad);
+      if (capacidad == null || capacidad < 0) {
+        setState(() => _error = 'La capacidad máxima tiene que ser un número mayor o igual a 0');
+        return;
+      }
+    }
+    final version = widget.producto.rowVersion;
+    if (version == null) {
+      setState(() => _error = 'No se pudo leer la versión del producto. Volvé a abrir la ficha.');
+      return;
+    }
+
+    setState(() {
+      _guardando = true;
+      _error = null;
+    });
+    try {
+      await ref.read(stockRepositoryProvider).editarAlmacenaje(
+        widget.producto.idProducto,
+        expectedVersion: version,
+        almacenaje: {
+          'capacidad_maxima': capacidad,
+          'id_ubicacion_preferida': _idPreferida,
+          'id_ubicacion_automatica': _idAutomatica,
+          'obs_recepcion': _obs.text.trim().isEmpty ? null : _obs.text.trim(),
+        },
+      );
+      if (!mounted) return;
+      ref.invalidate(productoDetalleProvider(widget.producto.idProducto));
+      final messenger = ScaffoldMessenger.of(context);
+      Navigator.of(context).pop();
+      messenger.showSnackBar(const SnackBar(content: Text('Datos de depósito actualizados')));
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _error = describeError(e));
+    } finally {
+      if (mounted) setState(() => _guardando = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final usuario = ref.watch(authControllerProvider).value;
+    final puedeEditar = (usuario?.tienePermiso('productos.editar') ?? false) && widget.producto.manejaStock;
+
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: SafeArea(
+        child: Container(
+          margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+          padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(24),
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    margin: const EdgeInsets.only(bottom: 14),
+                    decoration: BoxDecoration(
+                      color: AppColors.border,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  ),
+                ),
+                Row(
+                  children: [
+                    const Expanded(
+                      child: Text(
+                        'Capacidad, ubicación y recepción',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.text,
+                        ),
+                      ),
+                    ),
+                    if (puedeEditar && !_editando)
+                      TextButton.icon(
+                        onPressed: _empezarEdicion,
+                        icon: const Icon(Icons.edit_outlined, size: 18),
+                        label: const Text('Editar'),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                if (_editando) ..._formulario() else ..._vista(),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  List<Widget> _vista() => [
+    _InfoExtraFila(
+      icono: Icons.inventory_2_outlined,
+      etiqueta: 'Capacidad máxima',
+      valor: _r.capacidadMaxima != null
+          ? '${formatCantidad(_r.capacidadMaxima!, pesable: true)} ${_r.unidadSimbolo}'
+          : null,
+    ),
+    _InfoExtraFila(
+      icono: Icons.push_pin_outlined,
+      etiqueta: 'Ubicación recomendada',
+      valor: _ubicacionLabel(_r.ubicacionPreferidaCodigo, _r.ubicacionPreferidaNombre),
+    ),
+    _InfoExtraFila(
+      icono: Icons.route_outlined,
+      etiqueta: 'Ubicación automática',
+      valor: _ubicacionLabel(_r.ubicacionAutomaticaCodigo, _r.ubicacionAutomaticaNombre),
+    ),
+    _InfoExtraFila(
+      icono: Icons.info_outline,
+      etiqueta: 'Observación de recepción',
+      valor: _r.obsRecepcion,
+    ),
+  ];
+
+  List<Widget> _formulario() => [
+    TextField(
+      controller: _capacidad,
+      enabled: !_guardando,
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      decoration: InputDecoration(
+        labelText: 'Capacidad máxima',
+        suffixText: _r.unidadSimbolo,
+        prefixIcon: const Icon(Icons.inventory_2_outlined),
+      ),
+    ),
+    const SizedBox(height: 12),
+    _UbicacionCampo(
+      icono: Icons.push_pin_outlined,
+      etiqueta: 'Ubicación recomendada',
+      valor: _labelPreferida,
+      habilitado: !_guardando,
+      onElegir: () async {
+        final u = await _elegirUbicacion('Ubicación recomendada', _idPreferida);
+        if (u != null) {
+          setState(() {
+            _idPreferida = u.idUbicacion;
+            _labelPreferida = _ubicacionLabel(u.codigo, u.nombre);
+          });
+        }
+      },
+      onQuitar: () => setState(() {
+        _idPreferida = null;
+        _labelPreferida = null;
+      }),
+    ),
+    const SizedBox(height: 12),
+    _UbicacionCampo(
+      icono: Icons.route_outlined,
+      etiqueta: 'Ubicación automática',
+      valor: _labelAutomatica,
+      habilitado: !_guardando,
+      onElegir: () async {
+        final u = await _elegirUbicacion('Ubicación automática', _idAutomatica);
+        if (u != null) {
+          setState(() {
+            _idAutomatica = u.idUbicacion;
+            _labelAutomatica = _ubicacionLabel(u.codigo, u.nombre);
+          });
+        }
+      },
+      onQuitar: () => setState(() {
+        _idAutomatica = null;
+        _labelAutomatica = null;
+      }),
+    ),
+    const SizedBox(height: 12),
+    TextField(
+      controller: _obs,
+      enabled: !_guardando,
+      minLines: 2,
+      maxLines: 4,
+      decoration: const InputDecoration(
+        labelText: 'Observación de recepción',
+        prefixIcon: Icon(Icons.info_outline),
+        alignLabelWithHint: true,
+      ),
+    ),
+    if (_error != null) ...[
+      const SizedBox(height: 12),
+      Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(color: AppColors.erBg, borderRadius: BorderRadius.circular(12)),
+        child: Text(_error!, style: const TextStyle(color: AppColors.erTx, fontSize: 13)),
+      ),
+    ],
+    const SizedBox(height: 16),
+    Row(
+      children: [
+        Expanded(
+          child: OutlinedButton(
+            onPressed: _guardando ? null : () => setState(() => _editando = false),
+            child: const Text('Cancelar'),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: ElevatedButton(
+            onPressed: _guardando ? null : _guardar,
+            child: _guardando
+                ? const SizedBox(
+                    height: 20,
+                    width: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                  )
+                : const Text('Guardar'),
+          ),
+        ),
+      ],
+    ),
+  ];
+}
+
+/// Campo de ubicación del formulario: toca para elegir, "x" para quitarla.
+class _UbicacionCampo extends StatelessWidget {
+  const _UbicacionCampo({
+    required this.icono,
+    required this.etiqueta,
+    required this.valor,
+    required this.habilitado,
+    required this.onElegir,
+    required this.onQuitar,
+  });
+
+  final IconData icono;
+  final String etiqueta;
+  final String? valor;
+  final bool habilitado;
+  final VoidCallback onElegir;
+  final VoidCallback onQuitar;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: habilitado ? onElegir : null,
+      child: InputDecorator(
+        decoration: InputDecoration(
+          labelText: etiqueta,
+          prefixIcon: Icon(icono),
+          suffixIcon: valor != null && habilitado
+              ? IconButton(icon: const Icon(Icons.close), tooltip: 'Quitar', onPressed: onQuitar)
+              : const Icon(Icons.chevron_right),
+        ),
+        child: Text(
+          valor ?? 'Sin definir',
+          style: TextStyle(
+            fontSize: 14,
+            color: valor == null ? AppColors.faint : AppColors.text,
+          ),
         ),
       ),
     );

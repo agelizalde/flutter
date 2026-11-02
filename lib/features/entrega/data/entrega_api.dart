@@ -27,10 +27,13 @@ class EntregaApi {
     return (res.data!['items'] as List? ?? []).cast<Map<String, dynamic>>().map(EntregaItem.fromJson).toList();
   }
 
-  /// Config de Ajustes → Operaciones → Entrega — ver [EntregaConfig]. Global, no
-  /// por subpedido.
-  Future<EntregaConfig> entregaConfig() async {
-    final res = await _dio.get<Map<String, dynamic>>('/pedidos/subpedidos/entrega/config');
+  /// Config de Ajustes → Operaciones → Entrega — ver [EntregaConfig]. La del
+  /// almacén de ESE subpedido (la misma con la que valida el backend).
+  Future<EntregaConfig> entregaConfig(int idPedidoSubpedido) async {
+    final res = await _dio.get<Map<String, dynamic>>(
+      '/pedidos/subpedidos/entrega/config',
+      queryParameters: {'id_pedido_subpedido': idPedidoSubpedido},
+    );
     return EntregaConfig.fromJson(res.data!);
   }
 
@@ -71,6 +74,22 @@ class EntregaApi {
   Future<PedidoEntregaResumen> documentoEntrega(int idPedidoSubpedido) async {
     final res = await _dio.get<Map<String, dynamic>>('/pedidos/subpedidos/$idPedidoSubpedido/entrega/documento');
     return PedidoEntregaResumen.fromJson(res.data!, idPedidoSubpedido: idPedidoSubpedido);
+  }
+
+  /// Vehículos activos para el selector de móvil — atrás del permiso de
+  /// entregar, no de `vehiculos.ver`.
+  Future<List<VehiculoEntregaOpcion>> vehiculos() async {
+    final res = await _dio.get<Map<String, dynamic>>('/pedidos/subpedidos/entrega/vehiculos');
+    return (res.data!['items'] as List? ?? []).cast<Map<String, dynamic>>().map(VehiculoEntregaOpcion.fromJson).toList();
+  }
+
+  /// Cambia el móvil del reparto (solo PROPIO, EN_ENTREGA, responsable
+  /// asignado — lo valida el backend).
+  Future<void> cambiarVehiculo(int idPedidoSubpedido, {required int idVehiculo}) async {
+    await _dio.post<Map<String, dynamic>>(
+      '/pedidos/subpedidos/$idPedidoSubpedido/entrega/vehiculo',
+      data: {'id_vehiculo_entrega': idVehiculo},
+    );
   }
 
   /// "Entrega simple": un solo click, sin fotos ni novedades — el backend da la

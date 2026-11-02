@@ -8,25 +8,24 @@ import '../../../core/auth/sesion_expirada.dart';
 import '../../../core/auth/usuario_actual.dart';
 import '../../../core/notifications/push_notifications_service.dart';
 import '../../../core/providers.dart';
-
-/// Cada cuánto se vuelve a pedir `/auth/me` en segundo plano mientras hay
-/// sesión iniciada, para detectar sin recargar la app cambios hechos desde
-/// la web (ej. un admin bloquea al usuario o le cambia permisos).
-const _intervaloRefreshSesion = Duration(seconds: 15);
+import '../../../core/utils/refresco_por_accion.dart';
 
 /// Estado de sesión de la app. `null` = no logueado, sin tocar todavía
 /// (se resuelve en [build] contra el token guardado).
 class AuthController extends AsyncNotifier<UsuarioActual?> {
-  Timer? _refreshTimer;
   StreamSubscription<void>? _sesionExpiradaSub;
 
   @override
   Future<UsuarioActual?> build() async {
     final repo = ref.watch(authRepositoryProvider);
 
-    _refreshTimer?.cancel();
-    _refreshTimer = Timer.periodic(_intervaloRefreshSesion, (_) => _refrescarSilenciosamente());
-    ref.onDispose(() => _refreshTimer?.cancel());
+    // `/auth/me` se vuelve a pedir con cada acción del usuario (ver
+    // `RefrescoPorAccion`: una escritura exitosa o volver a la app), para
+    // tomar cambios hechos desde la web (ej. un admin bloquea al usuario o
+    // le cambia permisos) — antes era un timer cada 15s.
+    void alPulso() => _refrescarSilenciosamente();
+    RefrescoPorAccion.pulso.addListener(alPulso);
+    ref.onDispose(() => RefrescoPorAccion.pulso.removeListener(alPulso));
 
     // Cualquier request (no solo el refresh silencioso de arriba) puede
     // toparse con un 401 — DioClient lo avisa acá para cerrar la sesión

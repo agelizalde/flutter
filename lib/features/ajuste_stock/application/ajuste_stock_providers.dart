@@ -2,7 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:riverpod/legacy.dart';
 
 import '../../../core/providers.dart';
-import '../../../core/utils/silent_refresh.dart';
+import '../../../core/utils/refresco_por_accion.dart';
 import '../../auth/application/auth_controller.dart';
 import '../../recepcion/application/recepcion_providers.dart' show ubicacionesApiProvider;
 import '../../recepcion/domain/recepcion_models.dart' show UbicacionSimple;
@@ -26,28 +26,39 @@ final ajusteStockRepositoryProvider = Provider<AjusteStockRepository>((ref) {
   );
 });
 
-/// Búsqueda + filtro de estado del historial (`AjusteStockHomeScreen`).
-final ajusteStockBusquedaProvider = StateProvider<String>((ref) => '');
-final ajusteStockEstadoFiltroProvider = StateProvider<String?>((ref) => null);
+/// `true` si el usuario puede confirmar y aplicar: en ese caso los controles
+/// (por ubicación / por producto) se aplican apenas se crean en vez de
+/// quedar en BORRADOR esperando a alguien con esos permisos.
+final puedeAplicarAjusteDirectoProvider = Provider<bool>((ref) {
+  final u = ref.watch(authControllerProvider).value;
+  return (u?.tienePermiso('ajuste_stock.confirmar') ?? false) &&
+      (u?.tienePermiso('ajuste_stock.aplicar') ?? false);
+});
 
-final ajustesStockListadoProvider =
-    FutureProvider.family.autoDispose<List<AjusteStock>, (String query, String? estado)>((ref, params) async {
-  enableSilentRefresh(ref);
+/// Historial (`AjusteStockHistorialScreen`): solo ajustes APLICADOS del
+/// último mes en el almacén seleccionado. El backend filtra la fecha por
+/// `fecha_conteo`; acá se re-filtra y ordena por la fecha de aplicación.
+final ajustesStockListadoProvider = FutureProvider.autoDispose<List<AjusteStock>>((ref) async {
+  refrescarEnAcciones(ref);
   final usuario = await ref.watch(authControllerProvider.future);
   if (usuario?.idAlmacenSeleccionado == null) return const [];
 
-  final (q, estado) = params;
-  return ref.watch(ajusteStockRepositoryProvider).listar(
-    q: q.isEmpty ? null : q,
-    estado: estado,
+  final ahora = DateTime.now();
+  final desde = DateTime(ahora.year, ahora.month - 1, ahora.day);
+  final items = await ref.watch(ajusteStockRepositoryProvider).listar(
+    estado: 'APLICADO',
     idAlmacen: usuario!.idAlmacenSeleccionado,
-    limit: 50,
+    fechaDesde: desde,
+    limit: 500,
   );
+  DateTime fecha(AjusteStock a) => a.fechaAplicacion ?? a.fechaConteo ?? desde;
+  return items.where((a) => !fecha(a).isBefore(desde)).toList()
+    ..sort((a, b) => fecha(b).compareTo(fecha(a)));
 });
 
 final ajusteStockDetalleProvider =
     FutureProvider.family.autoDispose<AjusteStockDetalle, int>((ref, idAjusteStock) {
-  enableSilentRefresh(ref);
+  refrescarEnAcciones(ref);
   return ref.watch(ajusteStockRepositoryProvider).obtenerDetalle(idAjusteStock);
 });
 

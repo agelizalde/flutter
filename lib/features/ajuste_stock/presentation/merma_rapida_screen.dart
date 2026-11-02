@@ -1,21 +1,22 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/theme.dart';
 import '../../../core/errors/app_exception.dart';
-import '../../../core/widgets/barcode_scanner_screen.dart';
 import '../../auth/application/auth_controller.dart';
-import '../../stock/domain/stock_models.dart' show ProductoDetalle, ProductoSimple;
+import '../../stock/domain/stock_models.dart' show ProductoSimple;
 import '../application/ajuste_stock_providers.dart';
 import '../domain/ajuste_stock_models.dart';
+import 'buscador_producto_ajuste.dart';
 
-/// Atajo de "Nuevo ajuste": producto → cantidad → causa → listo. No pide
-/// ubicación ni pasa por BORRADOR/CONFIRMADO — `POST /ajuste-stock/merma-rapida`
-/// reparte la cantidad por FEFO entre las ubicaciones del almacén donde el
-/// producto tiene stock y aplica de una (ver `ajuste_stock_merma_rapida` en
-/// el backend).
+String _formatCantidad(double v) =>
+    v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toString();
+
+/// "Mermar producto" (opción c de Nuevo ajuste): producto → ubicación donde
+/// está → cantidad + causa → listo. No pasa por BORRADOR/CONFIRMADO:
+/// `POST /ajuste-stock/merma-rapida` con `id_ubicacion` crea+confirma+aplica
+/// de una, descontando solo de esa ubicación (ver `ajuste_stock_merma_rapida`
+/// en el backend; con causa Vencimiento sale del lote que vence antes).
 class MermaRapidaScreen extends ConsumerStatefulWidget {
   const MermaRapidaScreen({super.key});
 
@@ -24,73 +25,76 @@ class MermaRapidaScreen extends ConsumerStatefulWidget {
 }
 
 class _MermaRapidaScreenState extends ConsumerState<MermaRapidaScreen> {
-  final _searchController = TextEditingController();
   final _cantidadController = TextEditingController();
-  Timer? _debounce;
 
-  ProductoDetalle? _producto;
-  bool _cargandoDetalle = false;
+  ProductoSimple? _producto;
+  bool _cargandoUbicaciones = false;
+  List<StockEnUbicacion> _ubicaciones = const [];
+  StockEnUbicacion? _ubicacion;
+  String? _motivoCategoria;
   bool _guardando = false;
-  String _motivoCategoria = motivosMermaRapida.first.$1;
 
   @override
   void dispose() {
-    _debounce?.cancel();
-    _searchController.dispose();
     _cantidadController.dispose();
     super.dispose();
   }
 
-  void _onSearchChanged(String value) {
-    _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 400), () {
-      ref.read(ajusteBusquedaProductoProvider.notifier).state = value;
-    });
-  }
-
   Future<void> _seleccionarProducto(ProductoSimple p) async {
-    setState(() => _cargandoDetalle = true);
+    final idAlmacen = ref.read(authControllerProvider).value?.idAlmacenSeleccionado;
+    if (idAlmacen == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No hay un almacén seleccionado')),
+      );
+      return;
+    }
+
+    setState(() {
+      _producto = p;
+      _cargandoUbicaciones = true;
+    });
     try {
-      final (detalle, _) = await ref.read(ajusteStockRepositoryProvider).detalleProducto(p.idProducto);
+      final ubicaciones = await ref
+          .read(ajusteStockRepositoryProvider)
+          .stockPorUbicacionDeProducto(p.idProducto, idAlmacen: idAlmacen);
       if (!mounted) return;
-      setState(() => _producto = detalle);
+      setState(() {
+        _ubicaciones = ubicaciones;
+        // Una sola ubicación: se elige sola, no tiene sentido hacer tocar.
+        if (ubicaciones.length == 1) _ubicacion = ubicaciones.first;
+      });
     } catch (e) {
       if (!mounted) return;
+      setState(() => _producto = null);
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(describeError(e))));
     } finally {
-      if (mounted) setState(() => _cargandoDetalle = false);
+      if (mounted) setState(() => _cargandoUbicaciones = false);
     }
   }
 
-  Future<void> _escanear() async {
-    final codigo = await Navigator.of(context).push<String>(
-      MaterialPageRoute(builder: (_) => const BarcodeScannerScreen()),
-    );
-    if (codigo == null || !mounted) return;
-
-    setState(() => _cargandoDetalle = true);
-    try {
-      final producto = await ref.read(ajusteStockRepositoryProvider).buscarProductoPorCodigoBarra(codigo);
-      if (!mounted) return;
-      await _seleccionarProducto(producto);
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _cargandoDetalle = false);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(describeError(e))));
-    }
-  }
-
-  void _volverABuscar() {
+  void _volverAProducto() {
     setState(() {
       _producto = null;
+      _ubicaciones = const [];
+      _ubicacion = null;
+      _motivoCategoria = null;
       _cantidadController.clear();
-      _searchController.clear();
-      _motivoCategoria = motivosMermaRapida.first.$1;
     });
-    ref.read(ajusteBusquedaProductoProvider.notifier).state = '';
+  }
+
+  void _volverAUbicacion() {
+    if (_ubicaciones.length <= 1) {
+      _volverAProducto();
+      return;
+    }
+    setState(() {
+      _ubicacion = null;
+      _cantidadController.clear();
+    });
   }
 
   Future<void> _confirmar() async {
+    final u = _ubicacion!;
     final cantidad = double.tryParse(_cantidadController.text.replaceAll(',', '.'));
     if (cantidad == null || cantidad <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -98,8 +102,22 @@ class _MermaRapidaScreenState extends ConsumerState<MermaRapidaScreen> {
       );
       return;
     }
+    if (cantidad > u.cantidad) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('En ${u.ubicacionNombre} hay ${_formatCantidad(u.cantidad)} ${u.unidadSimbolo}, no se puede mermar más'),
+        ),
+      );
+      return;
+    }
+    if (_motivoCategoria == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Elegí una causa')),
+      );
+      return;
+    }
 
-    final idAlmacen = ref.read(authControllerProvider).value?.idAlmacenSeleccionado;
+    final idAlmacen = u.idAlmacen ?? ref.read(authControllerProvider).value?.idAlmacenSeleccionado;
     if (idAlmacen == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('No hay un almacén seleccionado')),
@@ -111,14 +129,19 @@ class _MermaRapidaScreenState extends ConsumerState<MermaRapidaScreen> {
     try {
       await ref.read(ajusteStockRepositoryProvider).mermaRapida(
         idProducto: _producto!.idProducto,
-        idUnidadMedida: _producto!.idUnidadBase,
+        idUnidadMedida: u.idUnidadMedida,
         idAlmacen: idAlmacen,
+        idUbicacion: u.idUbicacion,
         cantidad: cantidad,
-        motivoCategoria: _motivoCategoria,
+        motivoCategoria: _motivoCategoria!,
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Stock descontado: ${_producto!.nombre}')),
+        SnackBar(
+          content: Text(
+            'Mermado: ${_formatCantidad(cantidad)} ${u.unidadSimbolo} de ${_producto!.nombre} (${u.ubicacionNombre})',
+          ),
+        ),
       );
       Navigator.of(context).pop();
     } catch (e) {
@@ -131,121 +154,111 @@ class _MermaRapidaScreenState extends ConsumerState<MermaRapidaScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final Widget body;
+    if (_producto == null) {
+      body = BuscadorProductoAjuste(
+        ayuda: 'Elegí el producto a mermar.',
+        onSeleccionar: _seleccionarProducto,
+      );
+    } else if (_cargandoUbicaciones) {
+      body = const Center(child: CircularProgressIndicator());
+    } else if (_ubicacion == null) {
+      body = _PasoUbicacion(
+        producto: _producto!,
+        ubicaciones: _ubicaciones,
+        onVolver: _volverAProducto,
+        onSeleccionar: (u) => setState(() => _ubicacion = u),
+      );
+    } else {
+      body = _FormularioMerma(
+        producto: _producto!,
+        ubicacion: _ubicacion!,
+        cantidadController: _cantidadController,
+        motivoCategoria: _motivoCategoria,
+        guardando: _guardando,
+        onMotivoChanged: (v) => setState(() => _motivoCategoria = v),
+        onVolver: _volverAUbicacion,
+        onConfirmar: _confirmar,
+      );
+    }
+
     return Scaffold(
-      appBar: AppBar(title: const Text('Merma')),
-      body: _cargandoDetalle
-          ? const Center(child: CircularProgressIndicator())
-          : _producto == null
-              ? _BuscadorProducto(
-                  controller: _searchController,
-                  onChanged: _onSearchChanged,
-                  onSeleccionar: _seleccionarProducto,
-                  onEscanear: _escanear,
-                )
-              : _FormularioMerma(
-                  producto: _producto!,
-                  cantidadController: _cantidadController,
-                  motivoCategoria: _motivoCategoria,
-                  guardando: _guardando,
-                  onMotivoChanged: (v) => setState(() => _motivoCategoria = v),
-                  onCancelar: _volverABuscar,
-                  onConfirmar: _confirmar,
-                ),
+      appBar: AppBar(title: const Text('Mermar producto')),
+      body: body,
     );
   }
 }
 
-class _BuscadorProducto extends ConsumerWidget {
-  const _BuscadorProducto({
-    required this.controller,
-    required this.onChanged,
+class _PasoUbicacion extends StatelessWidget {
+  const _PasoUbicacion({
+    required this.producto,
+    required this.ubicaciones,
+    required this.onVolver,
     required this.onSeleccionar,
-    required this.onEscanear,
   });
 
-  final TextEditingController controller;
-  final ValueChanged<String> onChanged;
-  final ValueChanged<ProductoSimple> onSeleccionar;
-  final VoidCallback onEscanear;
+  final ProductoSimple producto;
+  final List<StockEnUbicacion> ubicaciones;
+  final VoidCallback onVolver;
+  final ValueChanged<StockEnUbicacion> onSeleccionar;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final async = ref.watch(ajusteResultadosProductoProvider);
-
+  Widget build(BuildContext context) {
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        ProductoElegidoHeader(nombre: producto.nombre, codigo: producto.codigoInterno, onCambiar: onVolver),
         Padding(
-          padding: const EdgeInsets.all(20),
-          child: TextField(
-            controller: controller,
-            autofocus: true,
-            onChanged: onChanged,
-            decoration: InputDecoration(
-              hintText: 'Buscar producto por nombre o código...',
-              prefixIcon: const Icon(Icons.search),
-              suffixIcon: IconButton(
-                icon: const Icon(Icons.qr_code_scanner, color: AppColors.accent),
-                tooltip: 'Escanear código de barras',
-                onPressed: onEscanear,
-              ),
-            ),
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
+          child: Text(
+            ubicaciones.isEmpty
+                ? 'Este producto no tiene stock en el almacén.'
+                : '¿De qué ubicación sale la merma?',
+            style: const TextStyle(fontSize: 13, color: AppColors.muted),
           ),
         ),
         Expanded(
-          child: async.when(
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (e, _) => Center(child: Text(describeError(e), style: const TextStyle(color: AppColors.erTx))),
-            data: (items) {
-              if (controller.text.trim().isEmpty) {
-                return const Center(child: Text('Escribí para buscar', style: TextStyle(color: AppColors.muted)));
-              }
-              if (items.isEmpty) {
-                return const Center(child: Text('Sin resultados', style: TextStyle(color: AppColors.muted)));
-              }
-              return ListView.separated(
-                padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-                itemCount: items.length,
-                separatorBuilder: (_, _) => const SizedBox(height: 8),
-                itemBuilder: (context, i) {
-                  final p = items[i];
-                  return Material(
-                    color: AppColors.surface,
-                    borderRadius: BorderRadius.circular(14),
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(14),
-                      onTap: () => onSeleccionar(p),
-                      child: Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 40,
-                              height: 40,
-                              decoration: BoxDecoration(color: AppColors.accentSoft, borderRadius: BorderRadius.circular(12)),
-                              child: const Icon(Icons.inventory_2_outlined, color: AppColors.accentDark, size: 20),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    p.nombre,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: AppColors.text),
-                                  ),
-                                  Text(p.codigoInterno, style: const TextStyle(fontSize: 12, color: AppColors.muted)),
-                                ],
-                              ),
-                            ),
-                            const Icon(Icons.chevron_right, color: AppColors.faint),
-                          ],
+          child: ListView.separated(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+            itemCount: ubicaciones.length,
+            separatorBuilder: (_, _) => const SizedBox(height: 8),
+            itemBuilder: (context, i) {
+              final u = ubicaciones[i];
+              return Material(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(14),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(14),
+                  onTap: () => onSeleccionar(u),
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(color: AppColors.accentSoft, borderRadius: BorderRadius.circular(12)),
+                          child: const Icon(Icons.location_on_outlined, color: AppColors.accentDark, size: 20),
                         ),
-                      ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            '${u.ubicacionNombre} (${u.ubicacionCodigo})',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: AppColors.text),
+                          ),
+                        ),
+                        Text(
+                          '${_formatCantidad(u.cantidad)} ${u.unidadSimbolo}',
+                          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: AppColors.sub),
+                        ),
+                        const SizedBox(width: 4),
+                        const Icon(Icons.chevron_right, color: AppColors.faint),
+                      ],
                     ),
-                  );
-                },
+                  ),
+                ),
               );
             },
           ),
@@ -258,70 +271,93 @@ class _BuscadorProducto extends ConsumerWidget {
 class _FormularioMerma extends StatelessWidget {
   const _FormularioMerma({
     required this.producto,
+    required this.ubicacion,
     required this.cantidadController,
     required this.motivoCategoria,
     required this.guardando,
     required this.onMotivoChanged,
-    required this.onCancelar,
+    required this.onVolver,
     required this.onConfirmar,
   });
 
-  final ProductoDetalle producto;
+  final ProductoSimple producto;
+  final StockEnUbicacion ubicacion;
   final TextEditingController cantidadController;
-  final String motivoCategoria;
+  final String? motivoCategoria;
   final bool guardando;
   final ValueChanged<String> onMotivoChanged;
-  final VoidCallback onCancelar;
+  final VoidCallback onVolver;
   final Future<void> Function() onConfirmar;
 
   @override
   Widget build(BuildContext context) {
     return ListView(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.fromLTRB(0, 0, 0, 20),
       children: [
-        Text(producto.nombre, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
-        const SizedBox(height: 2),
-        Text(producto.codigoInterno, style: const TextStyle(fontSize: 12, color: AppColors.muted)),
-        const SizedBox(height: 20),
-        TextField(
-          controller: cantidadController,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          autofocus: true,
-          decoration: InputDecoration(labelText: 'Cantidad (${producto.unidadSimbolo})'),
-        ),
-        const SizedBox(height: 20),
-        const Text('Causa', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.sub)),
-        const SizedBox(height: 8),
-        SegmentedButton<String>(
-          segments: motivosMermaRapida
-              .map((m) => ButtonSegment(value: m.$1, label: Text(m.$2)))
-              .toList(),
-          selected: {motivoCategoria},
-          onSelectionChanged: (s) => onMotivoChanged(s.first),
-        ),
-        const SizedBox(height: 28),
-        Row(
-          children: [
-            Expanded(
-              child: OutlinedButton(
-                onPressed: guardando ? null : onCancelar,
-                child: const Text('Cancelar'),
+        ProductoElegidoHeader(nombre: producto.nombre, codigo: producto.codigoInterno, onCambiar: guardando ? null : onVolver),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                decoration: BoxDecoration(color: AppColors.soft, borderRadius: BorderRadius.circular(12)),
+                child: Row(
+                  children: [
+                    const Icon(Icons.location_on_outlined, size: 18, color: AppColors.accentDark),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '${ubicacion.ubicacionNombre} (${ubicacion.ubicacionCodigo})',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.text),
+                      ),
+                    ),
+                    Text(
+                      'Hay ${_formatCantidad(ubicacion.cantidad)} ${ubicacion.unidadSimbolo}',
+                      style: const TextStyle(fontSize: 12, color: AppColors.muted),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: ElevatedButton(
-                onPressed: guardando ? null : () => onConfirmar(),
+              const SizedBox(height: 20),
+              TextField(
+                controller: cantidadController,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                autofocus: true,
+                decoration: InputDecoration(labelText: 'Cantidad a mermar (${ubicacion.unidadSimbolo})'),
+              ),
+              const SizedBox(height: 20),
+              const Text('Causa', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.sub)),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: motivosMermaRapida
+                    .map(
+                      (m) => ChoiceChip(
+                        label: Text(m.$2),
+                        selected: motivoCategoria == m.$1,
+                        onSelected: guardando ? null : (_) => onMotivoChanged(m.$1),
+                      ),
+                    )
+                    .toList(),
+              ),
+              const SizedBox(height: 28),
+              ElevatedButton(
+                onPressed: guardando || motivoCategoria == null ? null : () => onConfirmar(),
                 child: guardando
                     ? const SizedBox(
                         height: 18,
                         width: 18,
                         child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                       )
-                    : const Text('Descontar stock'),
+                    : const Text('Mermar'),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ],
     );

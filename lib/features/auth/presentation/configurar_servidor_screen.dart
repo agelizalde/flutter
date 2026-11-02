@@ -26,6 +26,7 @@ class _ConfigurarServidorScreenState extends ConsumerState<ConfigurarServidorScr
   bool _cargando = true;
   bool _guardando = false;
   bool _esValorGuardado = false;
+  bool _fijarErp = Env.fijoEnErp;
   String? _error;
 
   @override
@@ -90,6 +91,29 @@ class _ConfigurarServidorScreenState extends ConsumerState<ConfigurarServidorScr
     );
   }
 
+  /// Switch "Fijar en red de la empresa" — ver `Env.fijoEnErp`. Se aplica y
+  /// reconecta al toque; a diferencia de Guardar/Restablecer no saca de la
+  /// pantalla, para que se vea el estado del switch.
+  Future<void> _cambiarFijarErp(bool valor) async {
+    setState(() {
+      _fijarErp = valor;
+      _guardando = true;
+    });
+    final conectado = await Env.setFijarErp(valor);
+    if (conectado) ref.invalidate(authControllerProvider);
+    if (!mounted) return;
+    setState(() {
+      _guardando = false;
+      if (!_esValorGuardado) _urlController.text = Env.apiBaseUrl;
+    });
+    final mensaje = !conectado
+        ? (valor
+              ? 'Fijado en erp., pero no responde. ¿Está en el wifi de la empresa?'
+              : 'Sin conexión con el servidor')
+        : (valor ? 'Fijado en la red de la empresa' : 'Auto-detección erp./public. activada');
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(mensaje)));
+  }
+
   /// Reemplaza al viejo "cerrá la app y volvé a abrirla": el `baseUrl` de
   /// `DioClient` ya se relee en cada request (ver `Env.apiBaseUrl`), así
   /// que alcanza con probar la nueva configuración ahí mismo. Si conecta,
@@ -123,6 +147,32 @@ class _ConfigurarServidorScreenState extends ConsumerState<ConfigurarServidorScr
           : ListView(
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
               children: [
+                Container(
+                  decoration: BoxDecoration(
+                    color: AppColors.surface,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: AppColors.border),
+                  ),
+                  child: SwitchListTile.adaptive(
+                    value: _fijarErp,
+                    onChanged: _guardando || !Env.autoDominioSoportado ? null : _cambiarFijarErp,
+                    title: const Text(
+                      'Fijar en red de la empresa',
+                      style: TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    subtitle: Text(
+                      !Env.autoDominioSoportado
+                          ? 'No aplica en esta build (desarrollo).'
+                          : _esValorGuardado
+                          ? 'Hay una URL manual guardada: tiene prioridad sobre esta opción.'
+                          : 'Usa siempre erp.riversupply.com.py y nunca cambia a public. '
+                                'Para terminales que solo operan dentro de la empresa. '
+                                'Fuera del wifi de la empresa la app queda sin conexión.',
+                      style: const TextStyle(color: AppColors.muted, fontSize: 12.5),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 24),
                 const Text(
                   'URL completa del backend (incluye protocolo y puerto). Se guarda en este teléfono y pisa el valor con el que se compiló la app.',
                   style: TextStyle(color: AppColors.muted, fontSize: 13),

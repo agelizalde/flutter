@@ -7,10 +7,9 @@ import '../../auth/application/auth_controller.dart';
 
 /// Pantalla de inicio del módulo: solo accesos, sin listar ajustes
 /// previos (a pedido del usuario — el historial completo vive en su
-/// propia pantalla). "Nuevo ajuste" cubre los 8 motivos con conteo por
-/// ubicación; "Merma" es un atajo de un solo paso (producto + cantidad +
-/// causa, sin elegir ubicación ni pasar por BORRADOR/CONFIRMADO) que
-/// aplica directo — ver `MermaRapidaScreen`.
+/// propia pantalla). "Nuevo ajuste" abre un selector con 3 opciones:
+/// Control por ubicación (`NuevoAjusteScreen`), Control por producto
+/// (`ControlPorProductoScreen`) y Mermar producto (`MermaRapidaScreen`).
 class AjusteStockHomeScreen extends ConsumerWidget {
   const AjusteStockHomeScreen({super.key});
 
@@ -29,7 +28,7 @@ class AjusteStockHomeScreen extends ConsumerWidget {
           children: [
             _NuevoAjusteCta(
               habilitado: puedeCrear,
-              onTap: () => context.push('/ajuste-stock/nuevo'),
+              onTap: () => _elegirTipoAjuste(context),
             ),
             const SizedBox(height: 24),
             Row(
@@ -42,17 +41,6 @@ class AjusteStockHomeScreen extends ConsumerWidget {
                     onTap: () => context.push('/ajuste-stock/historial'),
                   ),
                 ),
-                if (puedeCrear) ...[
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: _AccionTile(
-                      icono: Icons.recycling_outlined,
-                      color: AppColors.waTx,
-                      etiqueta: 'Merma',
-                      onTap: () => context.push('/ajuste-stock/merma-rapida'),
-                    ),
-                  ),
-                ],
                 const SizedBox(width: 10),
                 Expanded(
                   child: _AccionTile(
@@ -74,6 +62,119 @@ class AjusteStockHomeScreen extends ConsumerWidget {
               ),
             ],
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Selector de "Nuevo ajuste": las 3 formas de ajustar stock.
+void _elegirTipoAjuste(BuildContext context) {
+  showModalBottomSheet<void>(
+    context: context,
+    showDragHandle: true,
+    builder: (sheetContext) {
+      void ir(String ruta) {
+        Navigator.of(sheetContext).pop();
+        context.push(ruta);
+      }
+
+      return SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text(
+                '¿Qué querés hacer?',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.text),
+              ),
+              const SizedBox(height: 14),
+              _OpcionAjuste(
+                icono: Icons.location_on_outlined,
+                color: AppColors.accent,
+                titulo: 'Control por ubicación',
+                descripcion: 'Escaneá una ubicación y contá todo lo que hay',
+                onTap: () => ir('/ajuste-stock/nuevo'),
+              ),
+              const SizedBox(height: 10),
+              _OpcionAjuste(
+                icono: Icons.inventory_2_outlined,
+                color: AppColors.accentDark,
+                titulo: 'Control por producto',
+                descripcion: 'Elegí un producto y contalo en cada ubicación',
+                onTap: () => ir('/ajuste-stock/por-producto'),
+              ),
+              const SizedBox(height: 10),
+              _OpcionAjuste(
+                icono: Icons.recycling_outlined,
+                color: AppColors.waTx,
+                titulo: 'Mermar producto',
+                descripcion: 'Rotura, consumo interno, vencimiento…',
+                onTap: () => ir('/ajuste-stock/merma-rapida'),
+              ),
+            ],
+          ),
+        ),
+      );
+    },
+  );
+}
+
+class _OpcionAjuste extends StatelessWidget {
+  const _OpcionAjuste({
+    required this.icono,
+    required this.color,
+    required this.titulo,
+    required this.descripcion,
+    required this.onTap,
+  });
+
+  final IconData icono;
+  final Color color;
+  final String titulo;
+  final String descripcion;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppColors.surface,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            children: [
+              Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(icono, color: color, size: 24),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      titulo,
+                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: AppColors.text),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(descripcion, style: const TextStyle(fontSize: 12, color: AppColors.muted)),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right, color: AppColors.faint),
+            ],
+          ),
         ),
       ),
     );
@@ -130,7 +231,7 @@ class _NuevoAjusteCta extends StatelessWidget {
                     ),
                     const SizedBox(height: 3),
                     Text(
-                      'Contar stock real y registrar diferencias',
+                      'Contar por ubicación, por producto o mermar',
                       style: TextStyle(fontSize: 13, color: habilitado ? Colors.white70 : AppColors.faint),
                     ),
                   ],

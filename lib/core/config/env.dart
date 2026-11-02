@@ -84,6 +84,29 @@ class Env {
   static bool get _autoDominioSoportado =>
       kReleaseMode && !kIsWeb && _override.isEmpty;
 
+  /// Público para que "Configurar servidor" sepa si el switch "Fijar en
+  /// erp." tiene efecto en esta build (en desarrollo no hay erp./public.).
+  static bool get autoDominioSoportado => _autoDominioSoportado;
+
+  /// Terminal fija de la empresa (`ServidorConfigStore.leerFijarErp`,
+  /// switch en "Configurar servidor"): la auto-detección SOLO prueba
+  /// `erp.` (DNS normal + IP LAN forzada) y nunca cae a `public.` — ni al
+  /// arrancar, ni por failover de `DioClient`, ni desde `BackendMonitor`.
+  /// Si erp. no responde, la app va a `SinConexionScreen` y se reintenta
+  /// contra erp. solo, en vez de saltar al túnel y volver cada vez que el
+  /// wifi tiene un hipo. Un override manual de URL sigue ganando.
+  static bool _fijarErp = false;
+  static bool get fijoEnErp => _fijarErp;
+
+  /// Lo llama "Configurar servidor" al tocar el switch. Persiste y vuelve
+  /// a resolver la conexión al toque (si estaba en public. y se activa,
+  /// pasa a erp. sin reiniciar la app). Devuelve si quedó conectado.
+  static Future<bool> setFijarErp(bool valor) async {
+    _fijarErp = valor;
+    await ServidorConfigStore().guardarFijarErp(valor);
+    return reintentarConexion();
+  }
+
   /// true cuando la app está auto-eligiendo entre erp./public. ahora mismo
   /// (soportado y sin override manual activo). `BackendMonitor` y el
   /// interceptor de `DioClient` no hacen nada si esto es false.
@@ -140,6 +163,7 @@ class Env {
   /// incluido), marca `ConexionEstado` para que el router mande a
   /// `/sin-conexion` en vez de dejar la app esperando en silencio.
   static Future<void> cargarOverrideGuardado() async {
+    _fijarErp = await ServidorConfigStore().leerFijarErp();
     final guardado = await ServidorConfigStore().leer();
     if (guardado != null) {
       _runtimeOverride = guardado;
@@ -196,6 +220,14 @@ class Env {
       _sincronizarAccesoPublico();
       return true;
     }
+    if (_fijarErp) {
+      // Se queda apuntando a erp. aunque no responda: `BackendMonitor`
+      // y "Reintentar" lo vuelven a probar, nunca contra public.
+      _origenActivo = _erpOrigin;
+      _sincronizarAccesoPublico();
+      _diag('[fijo en erp.] public. no se intenta (Configurar servidor)');
+      return false;
+    }
     final publicoOk = await _publicoDisponible();
     _origenActivo = _publicOrigin;
     _sincronizarAccesoPublico();
@@ -251,7 +283,7 @@ class Env {
   /// periódico de `BackendMonitor`. Idempotente: si ya estábamos en
   /// public. no hace nada.
   static void marcarErpCaido() {
-    if (modoAutoDominioActivo && _origenActivo == _erpOrigin) {
+    if (modoAutoDominioActivo && !_fijarErp && _origenActivo == _erpOrigin) {
       _origenActivo = _publicOrigin;
       _erpViaIpLan = false;
       _sincronizarAccesoPublico();
@@ -286,7 +318,7 @@ class Env {
       ConexionEstado.marcarConectado();
       return;
     }
-    if (ConexionEstado.sinConexion.value && await _publicoDisponible()) {
+    if (!_fijarErp && ConexionEstado.sinConexion.value && await _publicoDisponible()) {
       _origenActivo = _publicOrigin;
       _sincronizarAccesoPublico();
       ConexionEstado.marcarConectado();

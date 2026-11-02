@@ -1,7 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/providers.dart';
-import '../../../core/utils/silent_refresh.dart';
+import '../../../core/utils/refresco_por_accion.dart';
 import '../data/entrega_api.dart';
 import '../data/entrega_repository.dart';
 import '../domain/entrega_models.dart';
@@ -16,10 +16,10 @@ final entregaRepositoryProvider = Provider<EntregaRepository>((ref) {
 
 /// Lista de subpedidos en EN_ENTREGA (camión ya cargado, esperando que el
 /// chofer asignado confirme la entrega al cliente) — el backend ya filtra
-/// para que cada uno solo vea lo suyo, refrescada cada 20s mientras la
-/// pantalla esté abierta (mismo criterio que `subpedidosEnCargaProvider`).
+/// para que cada uno solo vea lo suyo. Se refresca con cada acción del
+/// usuario (`refrescarEnAcciones`), igual que `subpedidosEnCargaProvider`.
 final subpedidosEnEntregaProvider = FutureProvider.autoDispose<List<SubpedidoEnEntrega>>((ref) {
-  enableSilentRefresh(ref, interval: const Duration(seconds: 20));
+  refrescarEnAcciones(ref);
   return ref.watch(entregaRepositoryProvider).subpedidosEnEntrega();
 });
 
@@ -31,9 +31,10 @@ final entregaItemsProvider = FutureProvider.autoDispose.family<List<EntregaItem>
 
 /// Config de Ajustes → Operaciones → Entrega (fotos, aprobación, novedades
 /// permitidas) — se pide cada vez que se abre la pantalla de confirmar entrega,
-/// no se cachea entre aperturas.
-final entregaConfigProvider = FutureProvider.autoDispose<EntregaConfig>((ref) {
-  return ref.watch(entregaRepositoryProvider).entregaConfig();
+/// no se cachea entre aperturas. Por subpedido: el backend resuelve el almacén
+/// del armado de ese subpedido, igual que al validar la confirmación.
+final entregaConfigProvider = FutureProvider.autoDispose.family<EntregaConfig, int>((ref, idPedidoSubpedido) {
+  return ref.watch(entregaRepositoryProvider).entregaConfig(idPedidoSubpedido);
 });
 
 /// Documento de entrega del pedido — lo consume la pantalla de detalle de

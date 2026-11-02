@@ -2,7 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:riverpod/legacy.dart';
 
 import '../../../core/providers.dart';
-import '../../../core/utils/silent_refresh.dart';
+import '../../../core/utils/refresco_por_accion.dart';
 import '../../auth/application/auth_controller.dart';
 import '../../recepcion/application/recepcion_providers.dart' show ubicacionesApiProvider;
 import '../../recepcion/domain/recepcion_models.dart' show UbicacionSimple;
@@ -29,7 +29,7 @@ final trasladosRepositoryProvider = Provider<TrasladosRepository>((ref) {
 /// Alertas de reacomodo ("Acomodos") del almacén base del usuario — ver
 /// `traslados_ver.py::get_alertas_reacomodo`.
 final trasladosAlertasProvider = FutureProvider.autoDispose<List<AlertaReacomodo>>((ref) async {
-  enableSilentRefresh(ref);
+  refrescarEnAcciones(ref);
   final usuario = await ref.watch(authControllerProvider.future);
   if (usuario?.idAlmacenSeleccionado == null) return const [];
   return ref.watch(trasladosRepositoryProvider).alertasReacomodo(
@@ -43,7 +43,7 @@ final trasladosEstadoFiltroProvider = StateProvider<String?>((ref) => null);
 
 final trasladosListadoProvider =
     FutureProvider.family.autoDispose<List<Traslado>, (String query, String? estado)>((ref, params) async {
-  enableSilentRefresh(ref);
+  refrescarEnAcciones(ref);
   final usuario = await ref.watch(authControllerProvider.future);
   if (usuario?.idAlmacenSeleccionado == null) return const [];
 
@@ -57,7 +57,7 @@ final trasladosListadoProvider =
 });
 
 final trasladoDetalleProvider = FutureProvider.family.autoDispose<TrasladoDetalle, int>((ref, idTraspaso) {
-  enableSilentRefresh(ref);
+  refrescarEnAcciones(ref);
   return ref.watch(trasladosRepositoryProvider).obtenerDetalle(idTraspaso);
 });
 

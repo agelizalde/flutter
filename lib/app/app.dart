@@ -5,6 +5,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/notifications/push_notifications_service.dart';
+import '../core/utils/refresco_por_accion.dart';
 import '../features/notificaciones/presentation/notificacion_navegador.dart';
 import 'router.dart';
 import 'theme.dart';
@@ -18,10 +19,15 @@ class WherehouseApp extends ConsumerStatefulWidget {
 
 class _WherehouseAppState extends ConsumerState<WherehouseApp> {
   StreamSubscription? _aperturaPushSub;
+  AppLifecycleListener? _cicloDeVida;
 
   @override
   void initState() {
     super.initState();
+    // Volver a la app (desde otra app o con el teléfono desbloqueado) cuenta
+    // como acción del usuario: refresca lo que esté abierto — ver
+    // `RefrescoPorAccion` (ya no hay polling periódico).
+    _cicloDeVida = AppLifecycleListener(onResume: RefrescoPorAccion.notificar);
     final push = ref.read(pushNotificationsServiceProvider);
     unawaited(push.inicializar());
     // `rootNavigatorKey` (ver app/router.dart) es lo único que nos da un
@@ -38,6 +44,7 @@ class _WherehouseAppState extends ConsumerState<WherehouseApp> {
   @override
   void dispose() {
     _aperturaPushSub?.cancel();
+    _cicloDeVida?.dispose();
     super.dispose();
   }
 

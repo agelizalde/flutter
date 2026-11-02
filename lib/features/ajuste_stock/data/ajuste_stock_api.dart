@@ -6,7 +6,7 @@ import '../domain/ajuste_stock_models.dart';
 /// normal (`crear`) exige BORRADOR → CONFIRMADO → APLICADO (los ítems
 /// quedan fijos al crear; solo se puede editar la observación mientras
 /// está BORRADOR). `mermaRapida` es la excepción: un atajo de un solo paso
-/// que crea+confirma+aplica del lado del backend sin pedir ubicación.
+/// que crea+confirma+aplica del lado del backend (con o sin ubicación).
 class AjusteStockApi {
   AjusteStockApi(this._dio);
 
@@ -16,6 +16,7 @@ class AjusteStockApi {
     String? q,
     String? estado,
     int? idAlmacen,
+    DateTime? fechaDesde,
     int limit = 50,
   }) async {
     final res = await _dio.get<Map<String, dynamic>>(
@@ -24,6 +25,7 @@ class AjusteStockApi {
         if (q != null && q.isNotEmpty) 'q': q,
         'estado': ?estado,
         'id_almacen': ?idAlmacen,
+        if (fechaDesde != null) 'fecha_desde': fechaDesde.toIso8601String().substring(0, 10),
         'limit': limit,
       },
     );
@@ -71,6 +73,7 @@ class AjusteStockApi {
     required int idProducto,
     required int idUnidadMedida,
     required int idAlmacen,
+    int? idUbicacion,
     required double cantidad,
     required String motivoCategoria,
     String? observaciones,
@@ -81,6 +84,7 @@ class AjusteStockApi {
         'id_producto': idProducto,
         'id_unidad_medida': idUnidadMedida,
         'id_almacen': idAlmacen,
+        'id_ubicacion': ?idUbicacion,
         'cantidad': cantidad,
         'motivo_categoria': motivoCategoria,
         'observaciones': ?observaciones,
@@ -93,6 +97,19 @@ class AjusteStockApi {
 
   Future<void> aplicar(int idAjusteStock) =>
       _dio.post<void>('/ajuste-stock/$idAjusteStock/aplicar');
+
+  /// Anula un ajuste APLICADO devolviendo el stock — el backend solo lo
+  /// permite dentro de la hora siguiente a la aplicación.
+  Future<void> revertir({
+    required int idAjusteStock,
+    required int expectedVersion,
+    String? motivo,
+  }) {
+    return _dio.post<void>(
+      '/ajuste-stock/$idAjusteStock/revertir',
+      data: {'expected_version': expectedVersion, 'motivo': ?motivo},
+    );
+  }
 
   Future<void> anular({
     required int idAjusteStock,

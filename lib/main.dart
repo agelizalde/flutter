@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -29,7 +30,8 @@ Future<void> main() async {
   // Antes de cualquier request: deja que `Env.erpIpForzada` pueda forzar la
   // IP LAN de `erp.` en cualquier `HttpClient` de la app (Dio, fotos, el
   // propio chequeo de `Env`) — ver `AutoDominioHttpOverrides`.
-  HttpOverrides.global = AutoDominioHttpOverrides();
+  // En web no hay sockets de dart:io (y tampoco erp./public., ver `Env`).
+  if (!kIsWeb) HttpOverrides.global = AutoDominioHttpOverrides();
   // Antes que nada: si alguien pisó la URL del backend desde "Configurar
   // servidor" (login), o si hay que auto-elegir entre erp./public., que ya
   // esté resuelto para el primer request.

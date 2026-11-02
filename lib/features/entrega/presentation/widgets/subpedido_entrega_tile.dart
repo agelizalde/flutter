@@ -4,7 +4,8 @@ import '../../../../app/theme.dart';
 import '../../domain/entrega_models.dart';
 
 /// Tile de un subpedido en EN_ENTREGA, para `EntregaHomeScreen` — mismo
-/// lenguaje visual que `SubpedidoExpedicionTile` (módulo de carga).
+/// lenguaje visual que `SubpedidoExpedicionTile` (módulo de carga). Los
+/// pedidos simplificados llevan el badge "Simple" en vez de "En ruta".
 class SubpedidoEntregaTile extends StatelessWidget {
   const SubpedidoEntregaTile({super.key, required this.subpedido, required this.onTap});
 
@@ -38,12 +39,16 @@ class SubpedidoEntregaTile extends StatelessWidget {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
                     decoration: BoxDecoration(
-                      color: AppColors.accentSoft,
+                      color: subpedido.esSimplificado ? AppColors.okBg : AppColors.accentSoft,
                       borderRadius: BorderRadius.circular(999),
                     ),
-                    child: const Text(
-                      'En ruta',
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.accentDark),
+                    child: Text(
+                      subpedido.esSimplificado ? 'Simple' : 'En ruta',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: subpedido.esSimplificado ? AppColors.okTx : AppColors.accentDark,
+                      ),
                     ),
                   ),
                 ],

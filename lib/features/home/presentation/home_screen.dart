@@ -56,8 +56,9 @@ class _ModuloDeposito {
 /// `app.*.ver` correspondiente — decidido aparte del permiso que gatea el
 /// endpoint real, así un rol puede configurarse a medida qué ve en la app
 /// sin tocar lo que puede hacer en el back/web.
+// Stock no tiene tarjeta acá: el buscador fijo de arriba del Home
+// (`_Buscador` → `/escaner`) ya encuentra productos/ubicaciones/zonas.
 const _modulosBase = [
-  _ModuloDeposito('Stock', 'Ver stock y ubicaciones', Icons.inventory_2_outlined, '/stock', Color(0xFF2563EB), 'app.stock.ver'),
   _ModuloDeposito('Recepción', 'Recibir mercadería', Icons.move_to_inbox_outlined, '/recepcion', Color(0xFF16A34A), 'app.recepcion.ver'),
   _ModuloDeposito('Traslados', 'Mover entre ubicaciones', Icons.swap_horiz_outlined, '/traslados', Color(0xFF7C3AED), 'app.traslados.ver'),
   _ModuloDeposito('Ajuste de stock', 'Ajustar o solicitar ajuste', Icons.rule_outlined, '/ajuste-stock', Color(0xFF475569), 'app.ajuste_stock.ver'),
@@ -72,9 +73,9 @@ const _modulosBase = [
   // Entrega, Pedidos y OC simples son los únicos módulos cuyos endpoints
   // (`/pedidos/...`, `/productos/`, `/proveedores/`, `/compras/oc/`) están
   // en el allowlist de `public.` — ver `_ModuloDeposito.requiereRedInterna`
-  // y `nginx.conf`.
+  // y `nginx.conf`. Pedidos no tiene tarjeta acá: ya es una pestaña fija de
+  // la barra de abajo (`WherehouseShell`).
   _ModuloDeposito('Entregar pedido', 'Confirmar entrega al cliente', Icons.assignment_turned_in_outlined, '/entrega', Color(0xFF16A34A), 'app.entrega.ver', requiereRedInterna: false),
-  _ModuloDeposito('Pedidos', 'Ver y gestionar', Icons.receipt_long_outlined, '/pedidos', Color(0xFF4F46E5), 'app.pedidos.ver', requiereRedInterna: false),
   _ModuloDeposito('Asignar pickers', 'Asignar tareas de picking', Icons.assignment_ind_outlined, '/picking-asignacion', Color(0xFFD97706), 'app.picking_asignacion.ver'),
   _ModuloDeposito('Control de calidad', 'Controlar pedidos armados', Icons.fact_check_outlined, '/picking-control', Color(0xFF0D9488), 'app.picking_control.ver'),
   _ModuloDeposito('OC simples', 'Órdenes de compra', Icons.shopping_cart_outlined, '/oc-simple', Color(0xFFDB2777), 'app.oc_simple.ver', requiereRedInterna: false),
@@ -328,7 +329,7 @@ class _Buscador extends ConsumerWidget {
               const SizedBox(width: 10),
               const Expanded(
                 child: Text(
-                  'Buscar producto, pedido, ubicación...',
+                  'Buscar producto, pedido, ubicación, proveedor...',
                   style: TextStyle(color: AppColors.faint, fontSize: 13),
                 ),
               ),

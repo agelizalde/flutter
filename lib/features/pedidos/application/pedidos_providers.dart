@@ -2,7 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:riverpod/legacy.dart';
 
 import '../../../core/providers.dart';
-import '../../../core/utils/silent_refresh.dart';
+import '../../../core/utils/refresco_por_accion.dart';
 import '../data/pedidos_api.dart';
 import '../data/pedidos_repository.dart';
 import '../domain/pedido_models.dart';
@@ -52,7 +52,7 @@ final pedidosBusquedaProvider = StateProvider<String>((ref) => '');
 /// agregado (el más atrasado manda, ver `_estadoAgregado` en la pantalla).
 final pedidosSeguimientoProvider = FutureProvider.family
     .autoDispose<List<SubpedidoSeguimiento>, String>((ref, query) {
-      enableSilentRefresh(ref, interval: const Duration(seconds: 20));
+      refrescarEnAcciones(ref);
       return ref
           .watch(pedidosRepositoryProvider)
           .seguimiento(q: query.isEmpty ? null : query);
@@ -65,7 +65,7 @@ final pedidosSeguimientoProvider = FutureProvider.family
 /// ellos.
 final pedidosSinSubpedidosProvider = FutureProvider.family
     .autoDispose<List<PedidoSinSubpedidos>, String>((ref, query) {
-      enableSilentRefresh(ref, interval: const Duration(seconds: 20));
+      refrescarEnAcciones(ref);
       return ref
           .watch(pedidosRepositoryProvider)
           .sinSubpedidos(q: query.isEmpty ? null : query);

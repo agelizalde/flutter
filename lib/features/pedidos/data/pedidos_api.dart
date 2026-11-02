@@ -112,6 +112,49 @@ class PedidosApi {
     return PedidoDetalle.fromJson(res.data!);
   }
 
+  /// Pedido simplificado (ver `PedidosConfigCreacion.simplificadoDisponible`):
+  /// misma cabecera que `crear` + el tipo de subpedido; el servidor crea el
+  /// pedido ACTIVO con un subpedido de ese tipo ya CONFIRMADO
+  /// (`pedidos_simplificado_service.py`).
+  Future<PedidoDetalle> crearSimplificado({
+    required String codigoPedido,
+    required int idCliente,
+    required int idPedidoSubpedidoTipo,
+    int? idClienteSucursal,
+    String? observaciones,
+    int? idLugarEntrega,
+    DateTime? eta,
+    int? idVehiculoEntrega,
+    bool requierePgn = false,
+    bool requiereAduana = false,
+  }) async {
+    final res = await _dio.post<Map<String, dynamic>>(
+      '/pedidos/simplificado',
+      data: {
+        'codigo_pedido': codigoPedido,
+        'id_cliente': idCliente,
+        'id_pedido_subpedido_tipo': idPedidoSubpedidoTipo,
+        'id_cliente_sucursal': idClienteSucursal,
+        'observaciones': observaciones,
+        'id_lugar_entrega': idLugarEntrega,
+        'eta': eta?.toIso8601String(),
+        'id_vehiculo_entrega': idVehiculoEntrega,
+        'requiere_pgn': requierePgn,
+        'requiere_aduana': requiereAduana,
+      },
+    );
+    return PedidoDetalle.fromJson(res.data!);
+  }
+
+  /// "Entregar pedido" de un pedido simplificado: pasa sus subpedidos
+  /// CONFIRMADO directo a PEND_FACTURAR (sin picking/control/expedición).
+  Future<PedidoDetalle> entregarSimplificado(int idPedido) async {
+    final res = await _dio.post<Map<String, dynamic>>(
+      '/pedidos/simplificado/$idPedido/entregar',
+    );
+    return PedidoDetalle.fromJson(res.data!);
+  }
+
   /// Config de creación de pedidos del almacén base del usuario logueado
   /// (ver `pedidos_config_service.py::pedidos_config_get` — el almacén se
   /// resuelve solo del lado del servidor, no se manda acá). Requiere el
@@ -168,6 +211,15 @@ class PedidosApi {
     );
     final items = (res.data!['items'] as List).cast<Map<String, dynamic>>();
     return items.map(LugarEntregaSimple.fromJson).toList();
+  }
+
+  Future<List<SubpedidoTipoSimple>> tiposSubpedidoListar({String? q}) async {
+    final res = await _dio.get<Map<String, dynamic>>(
+      '/pedidos/subpedidos-tipos',
+      queryParameters: {if (q != null && q.isNotEmpty) 'q': q},
+    );
+    final items = (res.data!['items'] as List).cast<Map<String, dynamic>>();
+    return items.map(SubpedidoTipoSimple.fromJson).toList();
   }
 
   Future<List<VehiculoEntregaSimple>> vehiculosListar({String? q}) async {

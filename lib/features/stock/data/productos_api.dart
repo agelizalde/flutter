@@ -56,6 +56,35 @@ class ProductosApi {
     );
   }
 
+  /// `PATCH /productos/{id}` solo con `almacenaje` — el backend lo mezcla con
+  /// lo que ya tiene (`_merge_almacenaje_payload`), así que se mandan solo los
+  /// campos que edita la app. Permiso `productos.editar`, mismo que la pestaña
+  /// "Depósito" de la ficha web (`DepositoProducto.jsx`).
+  Future<void> editarAlmacenaje(
+    int idProducto, {
+    required int expectedVersion,
+    required Map<String, dynamic> almacenaje,
+  }) async {
+    await _dio.patch<Map<String, dynamic>>(
+      '/productos/$idProducto',
+      data: {
+        'expected_version': expectedVersion,
+        'patch': {'almacenaje': almacenaje},
+      },
+    );
+  }
+
+  /// `GET /compras/oc/ultimas-compras` (`oc_rout.py`) — mismo endpoint que el
+  /// popup "Stock actual" del navbar web. Permiso `oc.ver` u `oc.crear`.
+  Future<List<CompraProducto>> ultimasCompras(int idProducto, {int limit = 3}) async {
+    final res = await _dio.get<Map<String, dynamic>>(
+      '/compras/oc/ultimas-compras',
+      queryParameters: {'id_producto': idProducto, 'limit': limit},
+    );
+    final items = (res.data!['items'] as List).cast<Map<String, dynamic>>();
+    return items.map(CompraProducto.fromJson).toList();
+  }
+
   /// `GET /productos/codigos-barra/buscar/{codigo}` (ver
   /// `producto_codigo_barra_rout.py`) — resuelve un código escaneado a su
   /// producto. Lanza un 404 con `detail: "Código de barras no encontrado"`

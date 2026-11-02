@@ -2,7 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:riverpod/legacy.dart';
 
 import '../../../core/providers.dart';
-import '../../../core/utils/silent_refresh.dart';
+import '../../../core/utils/refresco_por_accion.dart';
 import '../../auth/application/auth_controller.dart';
 import '../../recepcion/application/recepcion_providers.dart' show ubicacionesApiProvider;
 import '../../recepcion/domain/recepcion_models.dart' show UbicacionSimple;
@@ -21,13 +21,12 @@ final ajusteStockSolicitudesRepositoryProvider = Provider<AjusteStockSolicitudes
   );
 });
 
-/// Tareas pendientes asignadas al usuario logueado. Con `enableSilentRefresh`
-/// para que el banner del Home y "Mis solicitudes" se mantengan al día sin
-/// que el usuario tenga que refrescar manualmente (mismo patrón que
-/// `misTareasProvider` de Picking).
+/// Tareas pendientes asignadas al usuario logueado. Con `refrescarEnAcciones`
+/// para que el banner del Home y "Mis solicitudes" se pongan al día con cada
+/// acción del usuario (mismo patrón que `misTareasProvider` de Picking).
 final misSolicitudesPendientesProvider =
     FutureProvider.autoDispose<List<SolicitudAjusteStock>>((ref) {
-  enableSilentRefresh(ref);
+  refrescarEnAcciones(ref);
   return ref.watch(ajusteStockSolicitudesRepositoryProvider).misTareas();
 });
 

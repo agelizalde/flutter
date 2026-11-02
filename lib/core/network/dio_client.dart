@@ -3,6 +3,7 @@ import 'package:dio/dio.dart';
 import '../config/env.dart';
 import '../errors/app_exception.dart';
 import '../storage/secure_storage.dart';
+import '../utils/refresco_por_accion.dart';
 import 'conexion_estado.dart';
 
 /// Cliente HTTP único de la app. Agrega el JWT en cada request y traduce
@@ -14,13 +15,11 @@ class DioClient {
           baseUrl: Env.apiBaseUrl,
           // Sin esto, Dio espera indefinido (no hay timeout por defecto).
           // El caso real que lo hizo evidente: usuario pasa de wifi a
-          // datos móviles con un request en curso (o uno periódico de
-          // `enableSilentRefresh` que arranca justo en la ventana de
-          // transición) — el socket quedó abierto sobre la interfaz wifi
+          // datos móviles con un request en curso — el socket quedó abierto sobre la interfaz wifi
           // que ya no existe, Android no manda ni siquiera un RST, y sin
           // timeout esa espera puede durar minutos. La app se ve
-          // "congelada" (`skipLoadingOnRefresh` de `enableSilentRefresh`
-          // ni muestra loading) en vez de mostrar un error o migrar a
+          // "congelada" (un refresco con `skipLoadingOnRefresh` ni muestra
+          // loading) en vez de mostrar un error o migrar a
           // public. — con estos timeouts el request falla en ventana
           // acotada, `onError` de abajo dispara el failover a public. (ver
           // `_debeFailover`) o `ConexionEstado.marcarSinConexion` si ya no
@@ -49,6 +48,7 @@ class DioClient {
           // negocio) es prueba de que la conexión funciona — recupera a
           // `SinConexionScreen` sin esperar al próximo chequeo periódico.
           ConexionEstado.marcarConectado();
+          if (_esAccionDelUsuario(response)) RefrescoPorAccion.notificar();
           handler.next(response);
         },
         onError: (DioException error, handler) async {
@@ -103,6 +103,18 @@ class DioClient {
   final Dio dio;
   final SecureStorage _secureStorage;
 
+  /// Una escritura exitosa (POST/PUT/PATCH/DELETE 2xx) es una acción del
+  /// usuario que cambió datos: dispara el refresco de las pantallas abiertas
+  /// (ver `RefrescoPorAccion`). Se excluye `/auth/` (login/logout no cambian
+  /// datos de las listas).
+  static bool _esAccionDelUsuario(Response<dynamic> response) {
+    final metodo = response.requestOptions.method.toUpperCase();
+    if (metodo == 'GET' || metodo == 'HEAD' || metodo == 'OPTIONS') return false;
+    final status = response.statusCode ?? 0;
+    if (status < 200 || status >= 300) return false;
+    return !response.requestOptions.path.contains('/auth/');
+  }
+
   /// Solo falla sobre a public. una vez por request (evita loop si public.
   /// también falla) y solo cuando el fallo es realmente de conexión (no
   /// tiene sentido reintentar un 404/422 en otro origen) estando en modo
@@ -113,6 +125,9 @@ class DioClient {
       return false;
     }
     if (!Env.modoAutoDominioActivo || !Env.estaUsandoErp) return false;
+    // Terminal fija en erp.: no hay otro origen al que caer (ver
+    // `Env.fijoEnErp`) — el error sigue de largo a `SinConexionScreen`.
+    if (Env.fijoEnErp) return false;
     return error.type == DioExceptionType.connectionError ||
         error.type == DioExceptionType.connectionTimeout ||
         // Socket que quedó colgado tras un cambio de red (ver el comentario

@@ -19,6 +19,11 @@ import 'widgets/nuevo_subpedido_sheet.dart';
 /// Estándar" del cliente, modificar ETA/lugar de entrega, o anular el
 /// pedido — la app de depósito no arma subpedidos desde cero, solo aplica
 /// plantillas ya cargadas desde la web.
+///
+/// Pedido simplificado (`detalle.esSimplificado`): en vez de la lista de
+/// subpedidos se muestra una tarjeta "Entrega" con el botón "Entregar
+/// pedido" (`_EntregaSimplificadoCard`), mismo criterio que la vista
+/// simplificada de `PedidoDetallePage.jsx` en la web.
 class PedidoInfoScreen extends ConsumerWidget {
   const PedidoInfoScreen({super.key, required this.idPedido});
 
@@ -172,7 +177,8 @@ class _AjustesMenuButton extends ConsumerWidget {
       tieneEstandarActivo = estandares.value?.isNotEmpty ?? false;
     }
 
-    final puedeNuevoEstandar = tieneCrear && editable && tieneEstandarActivo;
+    final puedeNuevoEstandar =
+        tieneCrear && editable && tieneEstandarActivo && !detalle.esSimplificado;
     final puedeEditar = usuario?.tienePermiso('pedidos.editar') ?? false;
     final puedeModEta = puedeEditar && editable;
     final puedeModLugar = puedeEditar && editable;
@@ -262,6 +268,28 @@ class _Contenido extends ConsumerWidget {
       pedidoSubpedidosProvider(detalle.idPedido),
     );
 
+    if (detalle.esSimplificado) {
+      return ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          _CabeceraCard(detalle: detalle),
+          const SizedBox(height: 16),
+          subpedidosAsync.when(
+            loading: () => const Padding(
+              padding: EdgeInsets.symmetric(vertical: 24),
+              child: Center(child: CircularProgressIndicator()),
+            ),
+            error: (e, _) => Text(
+              describeError(e),
+              style: const TextStyle(color: AppColors.erTx),
+            ),
+            data: (subpedidos) =>
+                _EntregaSimplificadoCard(detalle: detalle, subpedidos: subpedidos),
+          ),
+        ],
+      );
+    }
+
     return ListView(
       padding: const EdgeInsets.all(20),
       children: [
@@ -318,6 +346,128 @@ class _Contenido extends ConsumerWidget {
                 ),
         ),
       ],
+    );
+  }
+}
+
+/// Tarjeta "Entrega" del pedido simplificado: tipo(s) de subpedido, estado y
+/// el botón "Entregar pedido" mientras haya algo CONFIRMADO (permiso
+/// `pedidos_subpedidos.entregar`, el mismo que pide el servidor).
+class _EntregaSimplificadoCard extends ConsumerStatefulWidget {
+  const _EntregaSimplificadoCard({required this.detalle, required this.subpedidos});
+
+  final PedidoDetalle detalle;
+  final List<SubpedidoResumen> subpedidos;
+
+  @override
+  ConsumerState<_EntregaSimplificadoCard> createState() =>
+      _EntregaSimplificadoCardState();
+}
+
+class _EntregaSimplificadoCardState extends ConsumerState<_EntregaSimplificadoCard> {
+  bool _entregando = false;
+
+  Future<void> _entregar() async {
+    final confirmar = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Entregar pedido'),
+        content: const Text(
+          'Se da el pedido por entregado y pasa directo a Pendiente de facturación.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Entregar'),
+          ),
+        ],
+      ),
+    );
+    if (confirmar != true || !mounted) return;
+
+    setState(() => _entregando = true);
+    try {
+      await ref.read(pedidosRepositoryProvider).entregarSimplificado(widget.detalle.idPedido);
+      if (!mounted) return;
+      ref.invalidate(pedidoInfoProvider(widget.detalle.idPedido));
+      ref.invalidate(pedidoSubpedidosProvider(widget.detalle.idPedido));
+      ref.invalidate(pedidosSeguimientoProvider);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Pedido entregado')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(describeError(e))));
+    } finally {
+      if (mounted) setState(() => _entregando = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final usuario = ref.watch(authControllerProvider).value;
+    final puedeEntregar = usuario?.tienePermiso('pedidos_subpedidos.entregar') ?? false;
+    final anulado = widget.detalle.estado == 'ANULADO';
+    final pendientes = widget.subpedidos.where((sp) => sp.estado == 'CONFIRMADO').toList();
+    final tipos = widget.subpedidos.map((sp) => sp.tipoNombre).where((t) => t.isNotEmpty).toSet().join(', ');
+    final estados = widget.subpedidos.map((sp) => sp.estado).toSet();
+
+    final String mensaje;
+    if (anulado) {
+      mensaje = 'El pedido está anulado.';
+    } else if (pendientes.isNotEmpty) {
+      mensaje = puedeEntregar
+          ? 'Listo para entregar. Al entregar pasa directo a Pendiente de facturación.'
+          : 'Listo para entregar. No tenés permiso para confirmar entregas.';
+    } else {
+      mensaje = 'El pedido ya fue entregado.';
+    }
+
+    return _Card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Entrega',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.text),
+                ),
+              ),
+              for (final e in estados) ...[
+                const SizedBox(width: 6),
+                _EstadoBadge(estado: e),
+              ],
+            ],
+          ),
+          if (tipos.isNotEmpty)
+            _FilaDato(icono: Icons.layers_outlined, texto: tipos),
+          const SizedBox(height: 10),
+          Text(mensaje, style: const TextStyle(fontSize: 13, color: AppColors.sub)),
+          if (!anulado && pendientes.isNotEmpty && puedeEntregar) ...[
+            const SizedBox(height: 14),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: _entregando ? null : _entregar,
+                icon: _entregando
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      )
+                    : const Icon(Icons.inventory_2_outlined),
+                label: Text(_entregando ? 'Entregando…' : 'Entregar pedido'),
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }

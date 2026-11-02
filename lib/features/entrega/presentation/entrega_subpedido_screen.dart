@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../../app/theme.dart';
 import '../../../core/errors/app_exception.dart';
+import '../../../core/widgets/selector_sheet.dart';
 import '../application/entrega_providers.dart';
 import '../domain/entrega_models.dart';
 
@@ -66,6 +67,7 @@ class _EntregaSubpedidoScreenState extends ConsumerState<EntregaSubpedidoScreen>
   final _fotos = <XFile>[];
 
   bool _guardando = false;
+  bool _cambiandoVehiculo = false;
   String? _error;
   String? _errorFotos;
 
@@ -182,10 +184,50 @@ class _EntregaSubpedidoScreenState extends ConsumerState<EntregaSubpedidoScreen>
     }
   }
 
+  /// Cambia el móvil del reparto. El catálogo se trae una vez y se filtra
+  /// local (son pocos vehículos). El backend valida responsable/estado/método.
+  Future<void> _cambiarVehiculo(SubpedidoEnEntrega subpedido) async {
+    if (_cambiandoVehiculo || _guardando) return;
+    final repo = ref.read(entregaRepositoryProvider);
+    List<VehiculoEntregaOpcion>? catalogo;
+    final elegido = await showSelectorSheet<VehiculoEntregaOpcion>(
+      context,
+      titulo: 'Elegir móvil',
+      cargar: (q) async {
+        catalogo ??= await repo.vehiculos();
+        final filtro = q.trim().toLowerCase();
+        if (filtro.isEmpty) return catalogo!;
+        return catalogo!.where((v) => v.display.toLowerCase().contains(filtro)).toList();
+      },
+      etiqueta: (v) => v.display,
+      esIgual: (v) => v.idVehiculo == subpedido.idVehiculoEntrega,
+    );
+    if (elegido == null || !mounted || elegido.idVehiculo == subpedido.idVehiculoEntrega) return;
+
+    setState(() {
+      _cambiandoVehiculo = true;
+      _error = null;
+    });
+    try {
+      await repo.cambiarVehiculo(subpedido.idPedidoSubpedido, idVehiculo: elegido.idVehiculo);
+      if (!mounted) return;
+      // Cambia row_version: hay que recargar la lista para que la
+      // confirmación posterior mande el expected_version nuevo.
+      ref.invalidate(subpedidosEnEntregaProvider);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Móvil cambiado a ${elegido.display}')));
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _error = describeError(e));
+    } finally {
+      if (mounted) setState(() => _cambiandoVehiculo = false);
+    }
+  }
+
   /// "Entrega simple" — solo se llega acá cuando `EntregaConfig.entregaHabilitada`
   /// está apagado: un click, sin fotos ni novedades. El backend
   /// (`confirmar_entrega_simple`) da la mercadería por entregada, libera los
-  /// cajones y manda directo a Pendiente de facturación sin aprobación.
+  /// cajones; pasa a Pendiente de facturación o queda esperando la aprobación
+  /// de Firmas, igual que la entrega completa.
   Future<void> _confirmarSimple(int? expectedVersion) async {
     if (expectedVersion == null || _guardando) return;
 
@@ -195,8 +237,8 @@ class _EntregaSubpedidoScreenState extends ConsumerState<EntregaSubpedidoScreen>
         title: const Text('Entrega simple'),
         content: const Text(
           '¿Confirmar entrega simple? Se va a dar la mercadería por entregada sin '
-          'fotos ni novedades, y el subpedido pasa directo a Pendiente de '
-          'facturación sin aprobación gerencial.',
+          'fotos ni novedades. Si la entrega requiere aprobación, queda '
+          'pendiente de firma antes de pasar a Pendiente de facturación.',
         ),
         actions: [
           TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancelar')),
@@ -229,7 +271,7 @@ class _EntregaSubpedidoScreenState extends ConsumerState<EntregaSubpedidoScreen>
   @override
   Widget build(BuildContext context) {
     final itemsAsync = ref.watch(entregaItemsProvider(widget.idPedidoSubpedido));
-    final configAsync = ref.watch(entregaConfigProvider);
+    final configAsync = ref.watch(entregaConfigProvider(widget.idPedidoSubpedido));
     final listaAsync = ref.watch(subpedidosEnEntregaProvider);
 
     SubpedidoEnEntrega? subpedido;
@@ -252,9 +294,16 @@ class _EntregaSubpedidoScreenState extends ConsumerState<EntregaSubpedidoScreen>
             if (!config.entregaHabilitada) {
               return _EntregaSimpleBody(
                 subpedido: subpedido,
-                guardando: _guardando,
+                guardando: _guardando || _cambiandoVehiculo,
                 error: _error,
                 onConfirmar: () => _confirmarSimple(subpedido?.rowVersion),
+                vehiculo: subpedido != null && subpedido.puedeCambiarVehiculo
+                    ? _VehiculoTile(
+                        subpedido: subpedido,
+                        cargando: _cambiandoVehiculo,
+                        onCambiar: () => _cambiarVehiculo(subpedido!),
+                      )
+                    : null,
               );
             }
 
@@ -275,6 +324,14 @@ class _EntregaSubpedidoScreenState extends ConsumerState<EntregaSubpedidoScreen>
                           Text(subpedido.codigoPedido!, style: const TextStyle(fontSize: 13, color: AppColors.muted)),
                         ],
                         const SizedBox(height: 16),
+                        if (subpedido.puedeCambiarVehiculo) ...[
+                          _VehiculoTile(
+                            subpedido: subpedido,
+                            cargando: _cambiandoVehiculo,
+                            onCambiar: () => _cambiarVehiculo(subpedido!),
+                          ),
+                          const SizedBox(height: 16),
+                        ],
                       ],
                       if (_error != null) ...[
                         Container(
@@ -434,12 +491,16 @@ class _EntregaSimpleBody extends StatelessWidget {
     required this.guardando,
     required this.error,
     required this.onConfirmar,
+    this.vehiculo,
   });
 
   final SubpedidoEnEntrega? subpedido;
   final bool guardando;
   final String? error;
   final VoidCallback onConfirmar;
+
+  /// Selector de móvil (solo reparto propio) — null si no aplica.
+  final Widget? vehiculo;
 
   @override
   Widget build(BuildContext context) {
@@ -461,6 +522,10 @@ class _EntregaSimpleBody extends StatelessWidget {
                       style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: AppColors.text),
                     ),
                     const SizedBox(height: 12),
+                  ],
+                  if (vehiculo != null) ...[
+                    vehiculo!,
+                    const SizedBox(height: 16),
                   ],
                   const Text(
                     'La entrega completa está deshabilitada por ahora. Confirmá con '
@@ -496,6 +561,52 @@ class _EntregaSimpleBody extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Móvil actual del reparto + botón "Cambiar".
+class _VehiculoTile extends StatelessWidget {
+  const _VehiculoTile({required this.subpedido, required this.cargando, required this.onCambiar});
+
+  final SubpedidoEnEntrega subpedido;
+  final bool cargando;
+  final VoidCallback onCambiar;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 10, 8, 10),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.local_shipping_outlined, size: 22, color: AppColors.muted),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('Móvil', style: TextStyle(fontSize: 12, color: AppColors.muted)),
+                Text(
+                  subpedido.vehiculoDisplay ?? 'Sin móvil asignado',
+                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: AppColors.text),
+                ),
+              ],
+            ),
+          ),
+          cargando
+              ? const Padding(
+                  padding: EdgeInsets.all(12),
+                  child: SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+                )
+              : TextButton(onPressed: onCambiar, child: const Text('Cambiar')),
+        ],
+      ),
     );
   }
 }

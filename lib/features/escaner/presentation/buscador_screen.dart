@@ -160,7 +160,7 @@ class _Hero extends StatelessWidget {
                           enabledBorder: InputBorder.none,
                           focusedBorder: InputBorder.none,
                           disabledBorder: InputBorder.none,
-                          hintText: 'Producto, pedido, ubicación, cajón...',
+                          hintText: 'Producto, pedido, ubicación, proveedor...',
                           hintStyle: TextStyle(color: AppColors.faint, fontSize: 13),
                           contentPadding: EdgeInsets.symmetric(vertical: 14),
                         ),
@@ -219,21 +219,30 @@ class _Resultados extends ConsumerWidget {
     final productos = ref.watch(escanerProductosResultsProvider);
     final ubicaciones = ref.watch(escanerUbicacionesResultsProvider);
     final zonas = ref.watch(escanerZonasResultsProvider);
+    final proveedores = ref.watch(escanerProveedoresResultsProvider);
     final oc = ref.watch(escanerOcResultProvider);
     final contenedor = ref.watch(escanerContenedorResultProvider);
 
     final cargando =
-        productos.isLoading || ubicaciones.isLoading || zonas.isLoading || oc.isLoading || contenedor.isLoading;
-    final error = productos.error ?? ubicaciones.error ?? zonas.error ?? oc.error ?? contenedor.error;
+        productos.isLoading ||
+        ubicaciones.isLoading ||
+        zonas.isLoading ||
+        proveedores.isLoading ||
+        oc.isLoading ||
+        contenedor.isLoading;
+    final error =
+        productos.error ?? ubicaciones.error ?? zonas.error ?? proveedores.error ?? oc.error ?? contenedor.error;
     final listaProductos = productos.value ?? const [];
     final listaUbicaciones = ubicaciones.value ?? const [];
     final listaZonas = zonas.value ?? const [];
+    final listaProveedores = proveedores.value ?? const [];
     final ocEncontrada = oc.value;
     final contenedorEncontrado = contenedor.value;
 
     final sinNada = listaProductos.isEmpty &&
         listaUbicaciones.isEmpty &&
         listaZonas.isEmpty &&
+        listaProveedores.isEmpty &&
         ocEncontrada == null &&
         contenedorEncontrado == null;
 
@@ -292,6 +301,14 @@ class _Resultados extends ConsumerWidget {
           ...listaUbicaciones.map((u) => Padding(
                 padding: const EdgeInsets.only(bottom: 10),
                 child: _UbicacionTile(ubicacion: u),
+              )),
+          const SizedBox(height: 20),
+        ],
+        if (listaProveedores.isNotEmpty) ...[
+          const _SectionTitle('PROVEEDORES'),
+          ...listaProveedores.map((p) => Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: _ProveedorTile(proveedor: p),
               )),
         ],
       ],
@@ -426,6 +443,27 @@ class _UbicacionTile extends StatelessWidget {
       titulo: ubicacion.ubicacionNombre,
       subtitulo: '${ubicacion.almacenNombre} · ${ubicacion.ubicacionCodigo}',
       trailing: _Badge(texto: '${ubicacion.cantidadProductos} prod.'),
+    );
+  }
+}
+
+/// Abre los productos del proveedor — misma ruta que el modo "Proveedor"
+/// de `StockSearchScreen`.
+class _ProveedorTile extends StatelessWidget {
+  const _ProveedorTile({required this.proveedor});
+
+  final ProveedorSimple proveedor;
+
+  @override
+  Widget build(BuildContext context) {
+    final nombre = proveedor.nombreComercial ?? proveedor.razonSocial;
+    return _ResultCard(
+      onTap: () => context.push('/stock/proveedor/${proveedor.idProveedor}', extra: nombre),
+      leadingIcon: Icons.local_shipping_outlined,
+      leadingColor: const Color(0xFFDC2626),
+      titulo: nombre,
+      subtitulo: proveedor.codigoProveedor,
+      trailing: null,
     );
   }
 }

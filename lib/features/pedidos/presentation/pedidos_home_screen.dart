@@ -10,28 +10,31 @@ import '../../../core/utils/parsing.dart';
 import '../../auth/application/auth_controller.dart';
 import '../application/pedidos_providers.dart';
 import '../domain/pedido_models.dart';
+import 'pedidos_ayuda.dart';
 import 'widgets/nuevo_pedido_sheet.dart';
 
 /// Entrada al módulo "Pedidos" (`/pedidos`, tab del bottom nav): lista los
-/// pedidos que el usuario puede seguir, según su permiso — `pedidos.ver`
-/// alcanza hasta el momento en que el subpedido se entrega; quien además
-/// tiene `pedidos_subpedidos.aprobar_entrega` lo sigue viendo en
-/// `ENTREGADO` hasta que la firma de entrega se resuelve. Junta DOS fuentes
+/// pedidos en curso, desde que el subpedido se confirma hasta que se
+/// entrega — una vez `ENTREGADO` deja de figurar (la aprobación de la
+/// entrega se hace desde Firmas). Junta DOS fuentes
 /// (ver `pedidos_providers.dart`): el seguimiento por subpedido (`GET
 /// /pedidos/subpedidos/ver`, la mayoría de los casos) y los pedidos `ACTIVO`
 /// que todavía no tienen ningún subpedido (`GET /pedidos/sin-subpedidos`) —
 /// sin esto último, un pedido recién creado desde `NuevoPedidoSheet` queda
 /// invisible hasta que alguien le arma el primer subpedido desde la web.
 /// Buscador libre (server-side, aplica a ambas fuentes). La lista se ordena
-/// por urgencia de ETA para que lo vencido/para hoy quede arriba, salvo lo
-/// ya `ENTREGADO` (sin filtro por estado — se sacaron los chips rápidos a
-/// pedido del usuario).
+/// por urgencia de ETA para que lo vencido/para hoy quede arriba (sin filtro
+/// por estado — se sacaron los chips rápidos a pedido del usuario).
 class PedidosHomeScreen extends ConsumerStatefulWidget {
   const PedidosHomeScreen({super.key});
 
   @override
   ConsumerState<PedidosHomeScreen> createState() => _PedidosHomeScreenState();
 }
+
+/// Fondo de la pantalla un tono más oscuro que `AppColors.pageBg`: con el
+/// gris global las tarjetas blancas se mezclaban con el fondo.
+const _fondo = Color(0xFFE9EDF3);
 
 class _PedidosHomeScreenState extends ConsumerState<PedidosHomeScreen> {
   final _controller = TextEditingController();
@@ -90,27 +93,30 @@ class _PedidosHomeScreenState extends ConsumerState<PedidosHomeScreen> {
     final sinSubpedidosAsync = ref.watch(pedidosSinSubpedidosProvider(query));
 
     return Scaffold(
-      backgroundColor: AppColors.pageBg,
+      backgroundColor: _fondo,
       appBar: AppBar(
         title: const Text('Pedidos'),
+        scrolledUnderElevation: 0,
+        shape: const Border(bottom: BorderSide(color: AppColors.border)),
         actions: [
-          if (puedeCrear)
-            Padding(
-              padding: const EdgeInsets.only(right: 16),
-              child: FilledButton.icon(
-                onPressed: _nuevoPedido,
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size(0, 36),
-                  padding: const EdgeInsets.symmetric(horizontal: 14),
-                  backgroundColor: AppColors.accent,
-                  textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
-                ),
-                icon: const Icon(Icons.add, size: 18),
-                label: const Text('Nuevo pedido'),
-              ),
-            ),
+          IconButton(
+            icon: const Icon(Icons.help_outline),
+            tooltip: '¿Cómo funciona?',
+            onPressed: () => abrirAyudaPedidos(context),
+          ),
+          const SizedBox(width: 4),
         ],
       ),
+      floatingActionButton: puedeCrear
+          ? FloatingActionButton(
+              onPressed: _nuevoPedido,
+              tooltip: 'Nuevo pedido',
+              backgroundColor: AppColors.accent,
+              foregroundColor: Colors.white,
+              shape: const CircleBorder(),
+              child: const Icon(Icons.add, size: 28),
+            )
+          : null,
       body: Column(
         children: [
           Padding(
@@ -118,9 +124,16 @@ class _PedidosHomeScreenState extends ConsumerState<PedidosHomeScreen> {
             child: TextField(
               controller: _controller,
               onChanged: _onChanged,
-              decoration: const InputDecoration(
+              // Relleno blanco (el `soft` del tema es igual al fondo gris y
+              // el buscador desaparecía) con borde suave para despegarlo.
+              decoration: InputDecoration(
                 hintText: 'Buscar por código, cliente...',
-                prefixIcon: Icon(Icons.search),
+                prefixIcon: const Icon(Icons.search),
+                fillColor: AppColors.surface,
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(18),
+                  borderSide: const BorderSide(color: AppColors.border),
+                ),
               ),
             ),
           ),
@@ -160,7 +173,11 @@ class _Contenido extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (subpedidosAsync.isLoading || sinSubpedidosAsync.isLoading) {
+    // Spinner solo en la primera carga: en un refresco (por acción del
+    // usuario, ver `RefrescoPorAccion`) se siguen mostrando los datos
+    // anteriores hasta que llegan los nuevos, sin parpadeo.
+    if (!subpedidosAsync.hasValue && subpedidosAsync.isLoading ||
+        !sinSubpedidosAsync.hasValue && sinSubpedidosAsync.isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
 
@@ -179,8 +196,13 @@ class _Contenido extends StatelessWidget {
       );
     }
 
+    // El backend ya no manda `ENTREGADO`, pero se filtra igual acá por si
+    // la app habla con un servidor sin actualizar: lo entregado no figura.
+    final enCurso = (subpedidosAsync.value ?? const <SubpedidoSeguimiento>[])
+        .where((sp) => sp.estado != 'ENTREGADO')
+        .toList();
     final todos = [
-      ..._agruparPorPedido(subpedidosAsync.value ?? const []),
+      ..._agruparPorPedido(enCurso),
       ..._deSinSubpedidos(sinSubpedidosAsync.value ?? const []),
     ]..sort(_compararPorUrgencia);
 
@@ -192,7 +214,8 @@ class _Contenido extends StatelessWidget {
     }
 
     return ListView.separated(
-      padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
+      // Abajo deja lugar para el botón flotante "Nuevo pedido".
+      padding: const EdgeInsets.fromLTRB(20, 4, 20, 96),
       itemCount: todos.length + 1,
       separatorBuilder: (_, _) => const SizedBox(height: 10),
       itemBuilder: (context, i) {
@@ -235,8 +258,8 @@ class _EstadoVacio extends StatelessWidget {
   }
 }
 
-/// Mismo orden que `ESTADOS_SEGUIMIENTO_DEPOSITO` en `pedidos_rout.py` (más
-/// `ENTREGADO` al final) — es el único conjunto de estados que puede llegar
+/// Mismo orden que `ESTADOS_SEGUIMIENTO_DEPOSITO` en `pedidos_rout.py` — es
+/// el único conjunto de estados que puede llegar
 /// en `/pedidos/subpedidos/ver`, así que el índice acá sirve como "rank" de
 /// avance para calcular el estado agregado del pedido.
 const _ordenEstados = [
@@ -246,7 +269,6 @@ const _ordenEstados = [
   'CONTROLADO',
   'EN_CARGA',
   'EN_ENTREGA',
-  'ENTREGADO',
 ];
 
 /// Sentinela para un pedido sin ningún subpedido todavía (ver
@@ -267,6 +289,7 @@ class _PedidoInfo {
     this.sucursalTipoCodigo,
     this.sucursalTipoNombre,
     this.lugarEntregaNombre,
+    this.vehiculoNombre,
     this.eta,
   });
 
@@ -278,6 +301,7 @@ class _PedidoInfo {
     sucursalTipoCodigo: sp.sucursalTipoCodigo,
     sucursalTipoNombre: sp.sucursalTipoNombre,
     lugarEntregaNombre: sp.lugarEntregaNombre,
+    vehiculoNombre: sp.vehiculoNombre,
     eta: sp.eta,
   );
 
@@ -289,6 +313,7 @@ class _PedidoInfo {
     sucursalTipoCodigo: p.sucursalTipoCodigo,
     sucursalTipoNombre: p.sucursalTipoNombre,
     lugarEntregaNombre: p.lugarEntregaNombre,
+    vehiculoNombre: p.vehiculoNombre,
     eta: p.eta,
   );
 
@@ -299,6 +324,7 @@ class _PedidoInfo {
   final String? sucursalTipoCodigo;
   final String? sucursalTipoNombre;
   final String? lugarEntregaNombre;
+  final String? vehiculoNombre;
   final DateTime? eta;
 }
 
@@ -350,10 +376,8 @@ List<_PedidoAgrupado> _deSinSubpedidos(List<PedidoSinSubpedidos> pedidos) => [
 ];
 
 /// Urgencia según ETA, para ordenar la lista con lo más apremiante arriba:
-/// vencido < para hoy < con fecha futura < sin ETA. Lo ya `ENTREGADO` no
-/// necesita atención, así que se manda al fondo sin importar su ETA.
+/// vencido < para hoy < con fecha futura < sin ETA.
 int _prioridadUrgencia(_PedidoAgrupado p) {
-  if (p.estadoAgregado == 'ENTREGADO') return 3;
   final eta = p.base.eta;
   if (eta == null) return 2;
   final hoy = DateTime.now();
@@ -390,60 +414,28 @@ IconData _iconoTipoSucursal(_PedidoInfo base) {
   return Icons.storefront_outlined;
 }
 
-/// Arma "Sucursal · ETA · Lugar de entrega" como spans (no un solo string)
-/// para poder resaltar la ETA con su color de urgencia sin perder el resto
-/// en gris — se recorta con ellipsis como una sola línea, así que el orden
-/// importa: lo más urgente va primero.
-List<InlineSpan> _metaSpans(_PedidoInfo base, int urgencia, Color etaColor) {
-  const separador = TextSpan(
-    text: '  ·  ',
-    style: TextStyle(color: AppColors.faint),
-  );
-  final partes = <InlineSpan>[];
+/// Separador entre datos de una misma línea de la tarjeta.
+const _separador = TextSpan(text: '  ·  ', style: TextStyle(color: AppColors.faint));
 
-  if (base.sucursalNombre != null) {
-    partes.add(
-      TextSpan(
-        text: base.sucursalNombre,
-        style: const TextStyle(
-          fontWeight: FontWeight.w700,
-          color: AppColors.text,
-        ),
-      ),
-    );
-  }
-  if (base.eta != null) {
-    if (partes.isNotEmpty) partes.add(separador);
-    partes.add(
-      TextSpan(
-        text: formatFechaHora(base.eta!),
-        style: TextStyle(
-          fontWeight: urgencia <= 0 ? FontWeight.w700 : FontWeight.w600,
-          color: etaColor,
-        ),
-      ),
-    );
-  }
-  if (base.lugarEntregaNombre != null) {
-    if (partes.isNotEmpty) partes.add(separador);
-    partes.add(
-      TextSpan(
-        text: base.lugarEntregaNombre,
-        style: const TextStyle(color: AppColors.muted),
-      ),
-    );
-  }
-  if (partes.isEmpty) {
-    partes.add(
-      TextSpan(
-        text: base.codigoPedido,
-        style: const TextStyle(color: AppColors.muted),
-      ),
-    );
-  }
-  return partes;
-}
+/// Dato con ícono chiquito adelante (lugar de entrega, móvil) para la
+/// segunda línea de la tarjeta.
+List<InlineSpan> _datoConIcono(IconData icono, String texto) => [
+  WidgetSpan(
+    alignment: PlaceholderAlignment.middle,
+    child: Padding(
+      padding: const EdgeInsets.only(right: 3),
+      child: Icon(icono, size: 13, color: AppColors.faint),
+    ),
+  ),
+  TextSpan(text: texto),
+];
 
+/// Tarjeta de un pedido:
+///   **Sucursal** · ETA                                   (Estado)
+///   Cliente · (ícono) Lugar de entrega · (ícono) Móvil
+/// Sin sucursal, el cliente pasa a ser el título (y no se repite abajo). La
+/// ETA toma el color de urgencia (rojo vencido, naranja para hoy), igual
+/// que la franja de la izquierda.
 class _PedidoTile extends StatelessWidget {
   const _PedidoTile({required this.pedido});
 
@@ -459,9 +451,25 @@ class _PedidoTile extends StatelessWidget {
         : urgencia == 0
         ? AppColors.alertTx
         : AppColors.muted;
-    final segundaLinea = pedido.totalSubpedidos > 1
-        ? '${base.clienteNombre}  ·  ${pedido.totalSubpedidos} subpedidos'
-        : base.clienteNombre;
+
+    final tieneSucursal = base.sucursalNombre?.trim().isNotEmpty == true;
+    final titulo = tieneSucursal ? base.sucursalNombre! : base.clienteNombre;
+
+    // Segunda línea: cada dato se agrega solo si existe, con separador
+    // entre los que quedan.
+    final datos = <List<InlineSpan>>[
+      if (tieneSucursal) [TextSpan(text: base.clienteNombre)],
+      if (base.lugarEntregaNombre != null) _datoConIcono(Icons.place_outlined, base.lugarEntregaNombre!),
+      if (base.vehiculoNombre != null) _datoConIcono(Icons.local_shipping_outlined, base.vehiculoNombre!),
+      if (pedido.totalSubpedidos > 1) [TextSpan(text: '${pedido.totalSubpedidos} subpedidos')],
+    ];
+    if (datos.isEmpty) datos.add([TextSpan(text: base.codigoPedido)]);
+    final detalle = <InlineSpan>[
+      for (var i = 0; i < datos.length; i++) ...[
+        if (i > 0) _separador,
+        ...datos[i],
+      ],
+    ];
 
     // Franja de urgencia a la izquierda (roja = vencido, ámbar = para hoy):
     // permite escanear la lista de un vistazo sin tener que leer la ETA de
@@ -469,22 +477,28 @@ class _PedidoTile extends StatelessWidget {
     // tarjeta no varía entre ítems.
     final franjaUrgencia = urgencia <= 0 ? etaColor : Colors.transparent;
 
-    return Material(
-      color: AppColors.surface,
-      borderRadius: BorderRadius.circular(16),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: () => context.push('/pedidos/info/${base.idPedido}'),
-        child: Container(
-          decoration: BoxDecoration(
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.05),
-                blurRadius: 12,
-                offset: const Offset(0, 4),
-              ),
-            ],
+    // La sombra y el borde van en un Container POR FUERA del Material: antes
+    // la sombra estaba adentro del clip y no se veía, y la tarjeta se
+    // confundía con el fondo.
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.border),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF0F172A).withValues(alpha: 0.06),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
           ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(18),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: () => context.push('/pedidos/info/${base.idPedido}'),
           child: IntrinsicHeight(
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -492,23 +506,18 @@ class _PedidoTile extends StatelessWidget {
                 Container(width: 4, color: franjaUrgencia),
                 Expanded(
                   child: Padding(
-                    padding: const EdgeInsets.all(14),
+                    padding: const EdgeInsets.fromLTRB(12, 14, 14, 14),
                     child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Container(
-                          width: 40,
-                          height: 40,
+                          width: 42,
+                          height: 42,
                           alignment: Alignment.center,
                           decoration: BoxDecoration(
                             color: AppColors.accentSoft,
-                            borderRadius: BorderRadius.circular(12),
+                            borderRadius: BorderRadius.circular(13),
                           ),
-                          child: Icon(
-                            _iconoTipoSucursal(base),
-                            color: AppColors.accentDark,
-                            size: 20,
-                          ),
+                          child: Icon(_iconoTipoSucursal(base), color: AppColors.accentDark, size: 21),
                         ),
                         const SizedBox(width: 12),
                         Expanded(
@@ -516,54 +525,58 @@ class _PedidoTile extends StatelessWidget {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Expanded(
                                     child: Text.rich(
                                       TextSpan(
-                                        children: _metaSpans(base, urgencia, etaColor),
+                                        children: [
+                                          TextSpan(
+                                            text: titulo,
+                                            style: const TextStyle(
+                                              fontSize: 15,
+                                              fontWeight: FontWeight.w800,
+                                              color: AppColors.ink,
+                                            ),
+                                          ),
+                                          _separador,
+                                          TextSpan(
+                                            text: base.eta != null ? formatFechaHora(base.eta!) : 'Sin ETA',
+                                            style: TextStyle(
+                                              fontSize: 12.5,
+                                              fontWeight: urgencia <= 0 ? FontWeight.w800 : FontWeight.w600,
+                                              color: base.eta != null ? etaColor : AppColors.faint,
+                                            ),
+                                          ),
+                                        ],
                                       ),
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(fontSize: 13),
                                     ),
                                   ),
                                   const SizedBox(width: 8),
                                   Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 10,
-                                      vertical: 5,
-                                    ),
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                                     decoration: BoxDecoration(
                                       color: estado.bg,
                                       borderRadius: BorderRadius.circular(999),
                                     ),
                                     child: Text(
                                       estado.etiqueta,
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.w700,
-                                        color: estado.fg,
-                                      ),
+                                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: estado.fg),
                                     ),
                                   ),
                                 ],
                               ),
-                              const SizedBox(height: 4),
-                              Text(
-                                segundaLinea,
-                                maxLines: 1,
+                              const SizedBox(height: 5),
+                              Text.rich(
+                                TextSpan(children: detalle),
+                                maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  color: AppColors.muted,
-                                ),
+                                style: const TextStyle(fontSize: 12.5, height: 1.35, color: AppColors.muted),
                               ),
                             ],
                           ),
                         ),
-                        const SizedBox(width: 4),
-                        const Icon(Icons.chevron_right, color: AppColors.faint, size: 20),
                       ],
                     ),
                   ),
