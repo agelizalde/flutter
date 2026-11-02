@@ -8,6 +8,7 @@ class Recepcion {
     required this.proveedorNombre,
     this.fechaRecepcion,
     required this.origenRecepcion,
+    this.idOrdenCompra,
     this.observacion,
     required this.idAlmacen,
     required this.almacenNombre,
@@ -20,6 +21,7 @@ class Recepcion {
     required this.rowVersion,
     this.receptorUsername,
     this.usuarioControlUsername,
+    this.idUsuarioCreacion,
   });
 
   factory Recepcion.fromJson(Map<String, dynamic> j) => Recepcion(
@@ -31,6 +33,7 @@ class Recepcion {
         : (j['proveedor_razon_social'] as String? ?? ''),
     fechaRecepcion: parseDateOrNull(j['fecha_recepcion']),
     origenRecepcion: j['origen_recepcion'] as String? ?? 'MANUAL',
+    idOrdenCompra: j['id_orden_compra'] as int?,
     observacion: j['observacion'] as String?,
     idAlmacen: j['id_almacen'] as int,
     almacenNombre: j['almacen_nombre'] as String? ?? '',
@@ -43,6 +46,7 @@ class Recepcion {
     rowVersion: j['row_version'] as int,
     receptorUsername: j['receptor_username'] as String?,
     usuarioControlUsername: j['usuario_control_username'] as String?,
+    idUsuarioCreacion: j['id_usuario_creacion'] as int?,
   );
 
   final int idRecepcion;
@@ -50,6 +54,11 @@ class Recepcion {
   final String proveedorNombre;
   final DateTime? fechaRecepcion;
   final String origenRecepcion;
+
+  /// OC de origen — `null` en recepciones manuales. En una recepción de OC
+  /// las líneas no se quitan ni se agregan productos: se editan (ver
+  /// `recepcion_item_service.py::_assert_linea_de_la_oc`).
+  final int? idOrdenCompra;
   final String? observacion;
   final int idAlmacen;
   final String almacenNombre;
@@ -67,6 +76,10 @@ class Recepcion {
   /// Quién controló (`usuario_control_username`) — `null` hasta que se
   /// resuelve un control sobre esta recepción.
   final String? usuarioControlUsername;
+
+  /// Quién creó la recepción — puede anularla sin `recepciones.anular`
+  /// mientras siga en BORRADOR (ver `recepcion_service.py::recepcion_anular_header`).
+  final int? idUsuarioCreacion;
 }
 
 /// Resultado de la evaluación de diferencia de peso que el backend agrega a

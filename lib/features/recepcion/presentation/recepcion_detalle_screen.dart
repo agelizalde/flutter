@@ -26,6 +26,59 @@ class RecepcionDetalleScreen extends ConsumerWidget {
     }
   }
 
+  /// Vuelve a la pantalla de carga de la OC con lo ya cargado en esta
+  /// recepción, para corregir las líneas (sin quitarlas ni agregar
+  /// productos) y volver acá a confirmar.
+  Future<void> _reabrir(BuildContext context, WidgetRef ref, Recepcion recepcion) async {
+    await context.push<bool>('/recepcion/oc/${recepcion.idOrdenCompra}/items?recepcion=$idRecepcion');
+    ref.invalidate(recepcionDetalleProvider(idRecepcion));
+  }
+
+  Future<void> _anular(BuildContext context, WidgetRef ref, Recepcion recepcion) async {
+    final confirmar = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Anular recepción'),
+        content: Text(
+          'La recepción #$idRecepcion queda anulada y no se ingresa nada a stock.'
+          '${recepcion.idOrdenCompra != null ? ' La OC vuelve a quedar disponible para recibir.' : ''}'
+          '\n\n¿Anular?',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('Cancelar')),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.erTx),
+            child: const Text('Anular'),
+          ),
+        ],
+      ),
+    );
+    if (confirmar != true) return;
+
+    try {
+      await ref.read(recepcionRepositoryProvider).anular(
+            idRecepcion: idRecepcion,
+            expectedVersion: recepcion.rowVersion,
+          );
+      ref.invalidate(recepcionDetalleProvider(idRecepcion));
+      ref.invalidate(recepcionesRecientesProvider);
+      ref.invalidate(recepcionListadoProvider);
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Recepción #$idRecepcion anulada')),
+      );
+      if (context.canPop()) {
+        context.pop();
+      } else {
+        context.go('/recepcion');
+      }
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(describeError(e))));
+    }
+  }
+
   Future<void> _quitarItem(
     BuildContext context,
     WidgetRef ref,
@@ -136,9 +189,39 @@ class RecepcionDetalleScreen extends ConsumerWidget {
     final async = ref.watch(recepcionDetalleProvider(idRecepcion));
     final usuario = ref.watch(authControllerProvider).value;
     final puedeControlar = usuario?.tienePermiso('recepciones.controlar') ?? false;
+    final recepcionCargada = async.value?.recepcion;
+    // Un borrador propio se puede anular sin permiso especial; el resto
+    // necesita `recepciones.anular` (mismo criterio que el backend).
+    final puedeAnular = (usuario?.tienePermiso('recepciones.anular') ?? false) ||
+        (usuario != null && recepcionCargada?.idUsuarioCreacion == usuario.idUsuario);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Recepción')),
+      appBar: AppBar(
+        title: const Text('Recepción'),
+        actions: [
+          // Ruedita de ajustes: acciones poco frecuentes / destructivas.
+          if (recepcionCargada != null && recepcionCargada.estado == 'BORRADOR' && puedeAnular)
+            PopupMenuButton<String>(
+              tooltip: 'Opciones',
+              icon: const Icon(Icons.settings_outlined),
+              onSelected: (accion) {
+                if (accion == 'anular') _anular(context, ref, recepcionCargada);
+              },
+              itemBuilder: (_) => const [
+                PopupMenuItem(
+                  value: 'anular',
+                  child: Row(
+                    children: [
+                      Icon(Icons.block_outlined, size: 20, color: AppColors.erTx),
+                      SizedBox(width: 10),
+                      Text('Anular recepción', style: TextStyle(color: AppColors.erTx)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+        ],
+      ),
       body: async.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(
@@ -154,6 +237,9 @@ class RecepcionDetalleScreen extends ConsumerWidget {
         data: (detalle) {
           final esBorrador = detalle.recepcion.estado == 'BORRADOR';
           final esPendienteControl = detalle.recepcion.estado == 'PEND_CONTROL';
+          // Recepción de OC: una línea con error se corrige con "Reabrir
+          // recepción", no se quita ni se agregan productos fuera de la OC.
+          final esDeOc = detalle.recepcion.idOrdenCompra != null;
           return RefreshIndicator(
             onRefresh: () async =>
                 ref.invalidate(recepcionDetalleProvider(idRecepcion)),
@@ -188,7 +274,7 @@ class RecepcionDetalleScreen extends ConsumerWidget {
                       padding: const EdgeInsets.only(bottom: 10),
                       child: _ItemTile(
                         item: item,
-                        onQuitar: esBorrador
+                        onQuitar: esBorrador && !esDeOc
                             ? () => _quitarItem(context, ref, item)
                             : null,
                       ),
@@ -208,7 +294,7 @@ class RecepcionDetalleScreen extends ConsumerWidget {
                   const SizedBox(height: 10),
                   _ControlCard(control: detalle.control!),
                 ],
-                if (esBorrador) ...[
+                if (esBorrador && !esDeOc) ...[
                   const SizedBox(height: 8),
                   Material(
                     color: AppColors.accentSoft,
@@ -232,7 +318,17 @@ class RecepcionDetalleScreen extends ConsumerWidget {
                       ),
                     ),
                   ),
+                ],
+                if (esBorrador && esDeOc) ...[
                   const SizedBox(height: 16),
+                  OutlinedButton.icon(
+                    onPressed: () => _reabrir(context, ref, detalle.recepcion),
+                    icon: const Icon(Icons.edit_note_outlined, size: 20),
+                    label: const Text('Reabrir recepción'),
+                  ),
+                ],
+                if (esBorrador) ...[
+                  SizedBox(height: esDeOc ? 10 : 16),
                   ElevatedButton(
                     onPressed: detalle.items.isEmpty
                         ? null

@@ -4,8 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// `SecureStorage` — esa queda reservada al JWT, ver `SecureStorage`) de la
 /// URL del backend configurada a mano desde la pantalla de login. Es
 /// por-dispositivo: cada teléfono guarda su propio servidor, no viaja al
-/// backend ni se sincroniza entre dispositivos. Mismo patrón que
-/// `ImpresoraConfigStore` (features/produccion).
+/// backend ni se sincroniza entre dispositivos.
 class ServidorConfigStore {
   static const _kUrl = 'core_servidor_base_url';
   static const _kFijarErp = 'core_servidor_fijar_erp';

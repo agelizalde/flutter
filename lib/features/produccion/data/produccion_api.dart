@@ -86,6 +86,41 @@ class ProduccionApi {
     return OrdenProduccion.fromJson(res.data!['item'] as Map<String, dynamic>);
   }
 
+  /// Corte general "Impresiones habilitadas" (Ajustes → Producción →
+  /// Impresiones en la web, `configuracion_produccion.impresion_habilitada`).
+  Future<bool> impresionHabilitada() async {
+    final res = await _dio.get<Map<String, dynamic>>('/produccion/configuracion');
+    final valores = res.data!['valores'] as Map<String, dynamic>? ?? const {};
+    return (valores['impresion_habilitada'] as num? ?? 1) == 1;
+  }
+
+  Future<DestinoImpresion> destinoImpresion(int idOrden) async {
+    final res = await _dio.get<Map<String, dynamic>>('/produccion/impresoras/para-orden/$idOrden');
+    return DestinoImpresion.fromJson(res.data!);
+  }
+
+  /// El servidor arma el ZPL y lo manda a la impresora. Con [pesos] (etiqueta
+  /// que pide pesar) se imprime una copia por peso. Devuelve cuántas salieron.
+  Future<int> imprimirEtiquetas({
+    required int idOrden,
+    required String loteInterno,
+    int copias = 1,
+    List<double>? pesos,
+    int? idImpresora,
+  }) async {
+    final res = await _dio.post<Map<String, dynamic>>(
+      '/produccion/impresoras/imprimir-orden',
+      data: {
+        'id_orden': idOrden,
+        'lote_interno': loteInterno,
+        'copias': copias,
+        'pesos': ?pesos,
+        'id_impresora': ?idImpresora,
+      },
+    );
+    return (res.data!['enviadas'] as num?)?.toInt() ?? 0;
+  }
+
   Future<List<EtiquetaProduccion>> etiquetas(int idOrden) async {
     final res = await _dio.get<Map<String, dynamic>>('/produccion/ordenes/$idOrden/etiquetas');
     final items = (res.data!['items'] as List).cast<Map<String, dynamic>>();

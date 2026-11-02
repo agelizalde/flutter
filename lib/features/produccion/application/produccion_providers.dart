@@ -35,6 +35,19 @@ final etiquetaTemplateProvider = FutureProvider.family.autoDispose<EtiquetaTempl
   return ref.watch(produccionRepositoryProvider).obtenerEtiqueta(idEtiqueta);
 });
 
+/// Si se pueden imprimir etiquetas de Producción (interruptor de la web).
+/// Apagado, las pantallas esconden los botones de etiquetas; el servidor
+/// además rechaza imprimir.
+final impresionHabilitadaProvider = FutureProvider.autoDispose<bool>((ref) {
+  return ref.watch(produccionRepositoryProvider).impresionHabilitada();
+});
+
+/// A qué impresora van las etiquetas de una orden (la que tiene asignada la
+/// etiqueta de la receta, configurado en la web).
+final destinoImpresionProvider = FutureProvider.family.autoDispose<DestinoImpresion, int>((ref, idOrden) {
+  return ref.watch(produccionRepositoryProvider).destinoImpresion(idOrden);
+});
+
 /// Órdenes en curso (EN_PROCESO/PAUSADA) del almacén, filtradas a las
 /// propias del usuario (creador u operario) para "retomar" sin exponer lo
 /// que otro compañero dejó en curso en el mismo almacén.

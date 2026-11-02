@@ -11,11 +11,12 @@ import 'widgets/recepcion_tile.dart';
 
 /// Lista filtrable de recepciones en estado `INGRESADA` o `PEND_CONTROL`
 /// (nunca borradores/confirmadas/controladas/anuladas), acotada al
-/// almacén base del usuario — ver `recepcionListadoProvider`. Búsqueda por
-/// proveedor/almacén/observación dentro de ese subconjunto.
+/// almacén base del usuario — ver `recepcionListadoProvider`. La búsqueda
+/// la resuelve el backend (proveedor, quién recibió, número...).
 /// Se reusa para dos pantallas distintas según el `estadoFijo`:
-/// - Historial completo (`/recepcion/historial`): ambos estados, **solo
-///   las recepciones que hizo el usuario logueado**.
+/// - Historial (`/recepcion/historial`): ambos estados, de **todo el
+///   almacén**; sin buscar muestra solo las últimas 10. Cada fila es
+///   "Proveedor - Fecha" / "Recibió: usuario".
 /// - Pendientes de control (`/recepcion/pendientes-control`): `estadoFijo
 ///   = 'PEND_CONTROL'`, **de todo el almacén sin importar quién la
 ///   recibió** (el control es responsabilidad del almacén, no de quien
@@ -96,7 +97,9 @@ class _RecepcionHistorialScreenState extends ConsumerState<RecepcionHistorialScr
               controller: _controller,
               onChanged: _onChanged,
               decoration: InputDecoration(
-                hintText: 'Buscar por proveedor, almacén...',
+                hintText: widget.estadoFijo == null
+                    ? 'Buscar por proveedor o quién recibió...'
+                    : 'Buscar por proveedor, almacén...',
                 prefixIcon: const Icon(Icons.search),
                 suffixIcon: _controller.text.isEmpty
                     ? null
@@ -149,11 +152,22 @@ class _RecepcionHistorialScreenState extends ConsumerState<RecepcionHistorialScr
                       ],
                     );
                   }
+                  final esHistorial = widget.estadoFijo == null;
+                  final soloUltimas = esHistorial && _query.isEmpty;
                   return ListView.separated(
                     padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-                    itemCount: items.length,
+                    itemCount: items.length + (soloUltimas ? 1 : 0),
                     separatorBuilder: (_, _) => const SizedBox(height: 10),
-                    itemBuilder: (context, i) => RecepcionTile(recepcion: items[i]),
+                    itemBuilder: (context, i) {
+                      if (soloUltimas && i == 0) {
+                        return const Text(
+                          'ÚLTIMAS $historialRecepcionesPorDefecto RECEPCIONES',
+                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1.0, color: AppColors.muted),
+                        );
+                      }
+                      final recepcion = items[i - (soloUltimas ? 1 : 0)];
+                      return RecepcionTile(recepcion: recepcion, historial: esHistorial);
+                    },
                   );
                 },
               ),

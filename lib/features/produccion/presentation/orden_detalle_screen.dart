@@ -58,13 +58,14 @@ class OrdenDetalleScreen extends ConsumerWidget {
   }
 }
 
-class _Cuerpo extends StatelessWidget {
+class _Cuerpo extends ConsumerWidget {
   const _Cuerpo({required this.orden});
 
   final OrdenProduccion orden;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final impresionHabilitada = _impresionHabilitada(ref);
     final anulada = orden.estado == 'ANULADA';
     final finalizada = orden.estado == 'FINALIZADA';
     final duracion = orden.tiempoRealSegundos ?? orden.tiempoTranscurridoSegundos;
@@ -122,7 +123,7 @@ class _Cuerpo extends StatelessWidget {
             _FilaDato('Código', orden.codigo),
           ],
         ),
-        if (finalizada) ...[
+        if (finalizada && impresionHabilitada) ...[
           const SizedBox(height: 24),
           Center(
             child: OutlinedButton.icon(
@@ -318,3 +319,9 @@ class _FilaDato extends StatelessWidget {
     );
   }
 }
+
+/// Interruptor "Impresiones habilitadas" de la web. Mientras carga, el botón
+/// no aparece; si la consulta falla se muestra y decide el servidor.
+bool _impresionHabilitada(WidgetRef ref) => ref
+    .watch(impresionHabilitadaProvider)
+    .maybeWhen(data: (v) => v, error: (_, _) => true, orElse: () => false);

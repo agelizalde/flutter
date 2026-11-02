@@ -97,6 +97,10 @@ class RecepcionRepository {
     String? loteProveedor,
     DateTime? fechaVencimiento,
     DateTime? fechaFaenado,
+    String? observacion,
+    int? idOrdenCompraItem,
+    double? cantidadRechazada,
+    String? observacionRechazo,
   }) {
     return _recepcionesApi.agregarItem(
       idRecepcion: idRecepcion,
@@ -106,6 +110,10 @@ class RecepcionRepository {
       loteProveedor: loteProveedor,
       fechaVencimiento: fechaVencimiento,
       fechaFaenado: fechaFaenado,
+      observacion: observacion,
+      idOrdenCompraItem: idOrdenCompraItem,
+      cantidadRechazada: cantidadRechazada,
+      observacionRechazo: observacionRechazo,
     );
   }
 
@@ -139,6 +147,16 @@ class RecepcionRepository {
   }) {
     return _recepcionesApi.desactivarItem(
       idRecepcionItem: idRecepcionItem,
+      expectedVersion: expectedVersion,
+    );
+  }
+
+  Future<void> anular({
+    required int idRecepcion,
+    required int expectedVersion,
+  }) {
+    return _recepcionesApi.anular(
+      idRecepcion: idRecepcion,
       expectedVersion: expectedVersion,
     );
   }

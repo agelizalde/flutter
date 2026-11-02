@@ -2,6 +2,7 @@ import 'package:barcode_widget/barcode_widget.dart' as bw;
 import 'package:flutter/material.dart';
 
 import '../../../../app/theme.dart';
+import '../../domain/etiqueta_diseno.dart';
 import '../../domain/produccion_models.dart';
 
 String _fmtFecha(DateTime fecha) {
@@ -77,17 +78,11 @@ Widget _barcodeWidget(String data, String? tipo, String alineacion, {bool forzar
   );
 }
 
-/// Aproximación visual de cómo va a quedar la etiqueta física — mismo orden
-/// de campos y alineación que la plantilla asignada (`EtiquetaTemplate`,
-/// catálogo reusable) y misma proporción ancho/alto que el ZPL real
-/// (`construirZplEtiqueta`), para poder revisar el layout sin gastar una
-/// etiqueta física en cada prueba. No es un render pixel-perfect de lo que
-/// hace la impresora (fuente/espaciados de la impresora pueden variar), es
-/// una guía de "qué campo va dónde, en qué orden y con qué alineación".
-/// **No refleja la rotación 90° real de la impresión** (ver
-/// `construirZplEtiqueta` en `impresora_service.dart`) — a propósito, para
-/// que la vista previa se lea de la forma más natural en pantalla; solo la
-/// impresión física sale rotada.
+/// Aproximación visual de cómo va a quedar la etiqueta física, con los datos
+/// del lote. Con plantilla diseñada (`layout`) dibuja cada elemento en su
+/// posición, en el sentido de lectura; sin diseño, apila los campos en orden.
+/// No es pixel-perfect (la fuente de la impresora varía) y no muestra el giro
+/// de la impresión: el ZPL lo arma el servidor (produccion/etiquetas/zpl.py).
 class EtiquetaPreview extends StatelessWidget {
   const EtiquetaPreview({
     super.key,
@@ -106,6 +101,7 @@ class EtiquetaPreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (plantilla.layout != null) return _vistaDiseno();
     final relacion = plantilla.anchoMm <= 0 ? 1.0 : plantilla.altoMm / plantilla.anchoMm;
     final ancho = anchoMaximo;
     final alto = ancho * relacion;
@@ -186,4 +182,97 @@ class EtiquetaPreview extends StatelessWidget {
       ),
     );
   }
+
+  /// Plantilla diseñada (layout_json): cada elemento en su posición, en el
+  /// sentido de lectura — mismo dibujo que el lienzo del diseñador web.
+  Widget _vistaDiseno() {
+    final anchoMm = plantilla.anchoLectura <= 0 ? 1.0 : plantilla.anchoLectura;
+    final k = anchoMaximo / anchoMm; // px por mm
+    final hoy = DateTime.now();
+    final hijos = <Widget>[];
+
+    for (final el in plantilla.elementosVisibles) {
+      final left = (plantilla.margenIzquierdo + el.x) * k;
+      final top = (plantilla.margenSuperior + el.y) * k;
+      final grosor = (el.grosor * k).clamp(1.0, 20.0);
+
+      switch (el.tipo) {
+        case 'dato':
+        case 'texto':
+          final texto = textoElementoEtiqueta(el, etiqueta, pesoManualKg: pesoManualKg, hoy: hoy, vistaPrevia: true);
+          if (texto == null) break;
+          hijos.add(Positioned(
+            left: left,
+            top: top,
+            width: el.w * k,
+            height: el.altoTexto * k,
+            child: Text(
+              texto,
+              maxLines: el.lineas,
+              overflow: TextOverflow.clip,
+              textAlign: _textAlignDe(_alineacionDe(el.align)),
+              style: TextStyle(
+                fontSize: el.size * 0.3528 * k,
+                height: 1.2,
+                fontWeight: el.bold ? FontWeight.w800 : FontWeight.w400,
+                color: Colors.black,
+              ),
+            ),
+          ));
+          break;
+        case 'barra':
+        case 'qr':
+          final data = etiqueta.codigoBarra?.trim() ?? '';
+          if (data.isEmpty) break;
+          final qr = el.tipo == 'qr';
+          hijos.add(Positioned(
+            left: left,
+            top: top,
+            width: el.w * k,
+            height: (qr ? el.w : el.h) * k,
+            child: bw.BarcodeWidget(
+              barcode: _barcodeDe(etiqueta.tipoCodigo, forzarQr: qr),
+              data: data,
+              drawText: !qr && el.mostrarNumero,
+              style: TextStyle(fontSize: (2.2 * k).clamp(6.0, 14.0)),
+              errorBuilder: (context, error) => Text(data, style: const TextStyle(fontSize: 9)),
+            ),
+          ));
+          break;
+        case 'linea_h':
+          hijos.add(Positioned(left: left, top: top, width: el.w * k, height: grosor, child: const ColoredBox(color: Colors.black)));
+          break;
+        case 'linea_v':
+          hijos.add(Positioned(left: left, top: top, width: grosor, height: el.h * k, child: const ColoredBox(color: Colors.black)));
+          break;
+        case 'rect':
+          hijos.add(Positioned(
+            left: left,
+            top: top,
+            width: el.w * k,
+            height: el.h * k,
+            child: DecoratedBox(decoration: BoxDecoration(border: Border.all(color: Colors.black, width: grosor))),
+          ));
+          break;
+      }
+    }
+
+    return Container(
+      width: anchoMaximo,
+      height: plantilla.altoLectura * k,
+      clipBehavior: Clip.hardEdge,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border.all(color: AppColors.border, width: 1.5),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Stack(children: hijos),
+    );
+  }
+
+  static String _alineacionDe(String align) => switch (align) {
+    'center' => AlineacionEtiqueta.centro,
+    'right' => AlineacionEtiqueta.derecha,
+    _ => AlineacionEtiqueta.izquierda,
+  };
 }

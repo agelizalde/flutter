@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../../../core/utils/parsing.dart';
@@ -235,13 +237,142 @@ class EtiquetaResumen {
   final double altoMm;
 }
 
+/// Un elemento del diseño de la etiqueta (`produccion_etiquetas.layout_json`,
+/// ver `etiqueta_service.py::LayoutElementoIn` y el diseñador web
+/// `ajustes/produccion/etiquetas/etiquetaDiseno.js`). Medidas en mm dentro
+/// del área útil (sin márgenes), en el sentido en que se LEE la etiqueta;
+/// x/y = esquina superior izquierda.
+class EtiquetaElemento {
+  EtiquetaElemento({
+    required this.id,
+    required this.tipo,
+    this.campo,
+    required this.x,
+    required this.y,
+    required this.w,
+    this.h = 0,
+    this.size = 10,
+    this.bold = false,
+    this.align = 'left',
+    this.lineas = 1,
+    this.prefijo,
+    this.texto,
+    this.visible = true,
+    this.grosor = 0.3,
+    this.mostrarNumero = true,
+    this.cantidadModo,
+    this.cantidadTextoFijo,
+  });
+
+  factory EtiquetaElemento.fromJson(Map<String, dynamic> j) => EtiquetaElemento(
+    id: j['id']?.toString() ?? '',
+    tipo: j['tipo'] as String? ?? 'texto',
+    campo: j['campo'] as String?,
+    x: parseDouble(j['x']),
+    y: parseDouble(j['y']),
+    w: parseDouble(j['w']),
+    h: parseDouble(j['h']),
+    size: j['size'] == null ? 10 : parseDouble(j['size']),
+    bold: j['bold'] == true,
+    align: j['align'] as String? ?? 'left',
+    lineas: (j['lineas'] as num?)?.toInt() ?? 1,
+    prefijo: j['prefijo'] as String?,
+    texto: j['texto'] as String?,
+    visible: j['visible'] != false,
+    grosor: j['grosor'] == null ? 0.3 : parseDouble(j['grosor']),
+    mostrarNumero: j['mostrar_numero'] != false,
+    cantidadModo: j['cantidad_modo'] as String?,
+    cantidadTextoFijo: j['cantidad_texto_fijo'] as String?,
+  );
+
+  final String id;
+
+  /// 'dato' | 'texto' | 'barra' | 'qr' | 'linea_h' | 'linea_v' | 'rect'.
+  final String tipo;
+
+  /// Solo si `tipo == 'dato'`: uno de `CampoEtiqueta` (salvo barra/QR).
+  final String? campo;
+  final double x;
+  final double y;
+  final double w;
+  final double h;
+
+  /// Letra en puntos (texto).
+  final double size;
+  final bool bold;
+
+  /// 'left' | 'center' | 'right'.
+  final String align;
+  final int lineas;
+  final String? prefijo;
+
+  /// Texto libre, OBSERVACION o RSPA.
+  final String? texto;
+  final bool visible;
+  final double grosor;
+  final bool mostrarNumero;
+  final String? cantidadModo;
+  final String? cantidadTextoFijo;
+
+  bool get esTexto => tipo == 'dato' || tipo == 'texto';
+
+  /// Alto de la caja de texto: renglones × letra × interlineado 1,2.
+  double get altoTexto => lineas * size * 0.3528 * 1.2;
+
+  EtiquetaElemento escalado(double sx, double sy) {
+    final s = math.min(sx, sy);
+    return EtiquetaElemento(
+      id: id,
+      tipo: tipo,
+      campo: campo,
+      x: x * sx,
+      y: y * sy,
+      w: tipo == 'qr' ? w * s : (tipo == 'linea_v' ? w : w * sx),
+      h: h * sy,
+      size: esTexto ? math.max(4, size * s) : size,
+      bold: bold,
+      align: align,
+      lineas: lineas,
+      prefijo: prefijo,
+      texto: texto,
+      visible: visible,
+      grosor: grosor,
+      mostrarNumero: mostrarNumero,
+      cantidadModo: cantidadModo,
+      cantidadTextoFijo: cantidadTextoFijo,
+    );
+  }
+}
+
+/// `layout_json` de la plantilla: elementos + tamaño del área útil con que se
+/// diseñaron (si después cambió el tamaño o los márgenes se reescala).
+class EtiquetaLayout {
+  EtiquetaLayout({required this.refAncho, required this.refAlto, required this.elementos});
+
+  factory EtiquetaLayout.fromJson(Map<String, dynamic> j) => EtiquetaLayout(
+    refAncho: parseDouble(j['ref_ancho']),
+    refAlto: parseDouble(j['ref_alto']),
+    elementos: (j['elementos'] as List? ?? [])
+        .whereType<Map>()
+        .map((e) => EtiquetaElemento.fromJson(e.cast<String, dynamic>()))
+        .toList(),
+  );
+
+  final double refAncho;
+  final double refAlto;
+  final List<EtiquetaElemento> elementos;
+}
+
 /// Detalle completo de `GET /produccion/etiquetas/{id}` (ver
-/// `etiqueta_service.py::_build_full`) — la plantilla reusable de impresión:
-/// dimensiones físicas + campos en orden. Antes esto vivía embebido por
-/// receta (`produccion_recetas_etiqueta_campos`, 2026-07-14); ahora es un
-/// catálogo aparte (`produccion_etiquetas`, 2026-07-15) y la receta solo
-/// guarda una referencia (`RecetaDetalle.etiqueta.idEtiqueta`) para poder
-/// reusar la misma plantilla entre varias recetas.
+/// `etiqueta_service.py::_build_full`) — la plantilla reusable de impresión.
+/// Antes esto vivía embebido por receta (`produccion_recetas_etiqueta_campos`,
+/// 2026-07-14); ahora es un catálogo aparte (`produccion_etiquetas`,
+/// 2026-07-15) y la receta solo guarda una referencia
+/// (`RecetaDetalle.etiqueta.idEtiqueta`).
+///
+/// Desde el diseñador web (2026-11-02) puede traer `layout`: elementos con
+/// posición/tamaño propios. Sin `layout` se imprime con el auto-ajuste de
+/// siempre a partir de `campos` (que el backend mantiene sincronizados).
 class EtiquetaTemplate {
   EtiquetaTemplate({
     required this.idEtiqueta,
@@ -249,24 +380,71 @@ class EtiquetaTemplate {
     required this.anchoMm,
     required this.altoMm,
     required this.campos,
+    this.rotacion = 90,
+    this.margenSuperior = 2,
+    this.margenInferior = 2,
+    this.margenIzquierdo = 2,
+    this.margenDerecho = 2,
+    this.layout,
   });
 
-  factory EtiquetaTemplate.fromJson(Map<String, dynamic> j) => EtiquetaTemplate(
-    idEtiqueta: j['id_etiqueta'] as int,
-    nombre: j['nombre'] as String? ?? '',
-    anchoMm: parseDouble(j['ancho_mm']),
-    altoMm: parseDouble(j['alto_mm']),
-    campos: (j['campos'] as List? ?? [])
-        .cast<Map<String, dynamic>>()
-        .map(EtiquetaCampoTemplate.fromJson)
-        .toList(),
-  );
+  factory EtiquetaTemplate.fromJson(Map<String, dynamic> j) {
+    final lay = j['layout_json'];
+    return EtiquetaTemplate(
+      idEtiqueta: j['id_etiqueta'] as int,
+      nombre: j['nombre'] as String? ?? '',
+      anchoMm: parseDouble(j['ancho_mm']),
+      altoMm: parseDouble(j['alto_mm']),
+      campos: (j['campos'] as List? ?? [])
+          .cast<Map<String, dynamic>>()
+          .map(EtiquetaCampoTemplate.fromJson)
+          .toList(),
+      rotacion: (j['rotacion'] as num?)?.toInt() ?? 90,
+      margenSuperior: j['margen_superior'] == null ? 2 : parseDouble(j['margen_superior']),
+      margenInferior: j['margen_inferior'] == null ? 2 : parseDouble(j['margen_inferior']),
+      margenIzquierdo: j['margen_izquierdo'] == null ? 2 : parseDouble(j['margen_izquierdo']),
+      margenDerecho: j['margen_derecho'] == null ? 2 : parseDouble(j['margen_derecho']),
+      layout: lay is Map ? EtiquetaLayout.fromJson(lay.cast<String, dynamic>()) : null,
+    );
+  }
 
   final int idEtiqueta;
   final String nombre;
+
+  /// Rollo FÍSICO: ancho = `^PW`, alto = `^LL`.
   final double anchoMm;
   final double altoMm;
   final List<EtiquetaCampoTemplate> campos;
+
+  /// Giro de la impresión, de a 90° horario: 0 = derecha, 90/270 = de
+  /// costado respecto del avance del papel, 180 = al revés (rollo que llega
+  /// con las etiquetas dadas vuelta).
+  final int rotacion;
+
+  /// Márgenes en el sentido de lectura.
+  final double margenSuperior;
+  final double margenInferior;
+  final double margenIzquierdo;
+  final double margenDerecho;
+  final EtiquetaLayout? layout;
+
+  bool get deCostado => rotacion % 180 == 90;
+
+  /// Tamaño en el sentido de lectura (con 90°/270° se intercambian).
+  double get anchoLectura => deCostado ? altoMm : anchoMm;
+  double get altoLectura => deCostado ? anchoMm : altoMm;
+  double get areaAncho => anchoLectura - margenIzquierdo - margenDerecho;
+  double get areaAlto => altoLectura - margenSuperior - margenInferior;
+
+  /// Elementos visibles del diseño llevados al área útil actual.
+  List<EtiquetaElemento> get elementosVisibles {
+    final lay = layout;
+    if (lay == null) return const [];
+    final sx = lay.refAncho > 0 ? areaAncho / lay.refAncho : 1.0;
+    final sy = lay.refAlto > 0 ? areaAlto / lay.refAlto : 1.0;
+    final reescalar = (sx - 1).abs() > 0.001 || (sy - 1).abs() > 0.001;
+    return lay.elementos.where((e) => e.visible).map((e) => reescalar ? e.escalado(sx, sy) : e).toList();
+  }
 }
 
 /// Detalle completo de `GET /produccion/recetas/{id}` — la "ficha" de la
@@ -391,6 +569,7 @@ class OrdenListItem {
     this.productoPrincipalNombre,
     required this.tiempoEstimadoSegundos,
     this.tiempoRealSegundos,
+    this.tiempoTranscurridoSegundos = 0,
     this.creadoEn,
     this.finalizadoEn,
   });
@@ -405,6 +584,7 @@ class OrdenListItem {
     productoPrincipalNombre: j['producto_principal_nombre'] as String?,
     tiempoEstimadoSegundos: j['tiempo_estimado_segundos'] as int? ?? 0,
     tiempoRealSegundos: j['tiempo_real_segundos'] as int?,
+    tiempoTranscurridoSegundos: j['tiempo_transcurrido_segundos'] as int? ?? 0,
     creadoEn: parseDateOrNull(j['creado_en']),
     finalizadoEn: parseDateOrNull(j['finalizado_en']),
   );
@@ -420,6 +600,10 @@ class OrdenListItem {
   final String? productoPrincipalNombre;
   final int tiempoEstimadoSegundos;
   final int? tiempoRealSegundos;
+
+  /// Suma de intervalos al momento de listar (incluye el abierto si está
+  /// EN_PROCESO) — base del cronómetro de "Retomar" en el Home.
+  final int tiempoTranscurridoSegundos;
   final DateTime? creadoEn;
   final DateTime? finalizadoEn;
 }
@@ -688,4 +872,49 @@ class EtiquetaProduccion {
   final double cantidad;
   final String unidad;
   final DateTime? fechaVencimiento;
+}
+
+/// Impresora que tiene asignada la etiqueta de la receta (Ajustes →
+/// Producción → Conexiones en la web). La impresión la hace el SERVIDOR
+/// (`POST /produccion/impresoras/imprimir-orden`); la app solo elige a cuál
+/// mandar si hay más de una.
+class ImpresoraDisponible {
+  ImpresoraDisponible({required this.idImpresora, required this.nombre, required this.ip, this.estado});
+
+  factory ImpresoraDisponible.fromJson(Map<String, dynamic> j) => ImpresoraDisponible(
+    idImpresora: j['id_impresora'] as int,
+    nombre: j['nombre'] as String? ?? '',
+    ip: j['ip'] as String? ?? '',
+    estado: j['estado'] as String?,
+  );
+
+  final int idImpresora;
+  final String nombre;
+  final String ip;
+  final String? estado;
+}
+
+/// `GET /produccion/impresoras/para-orden/{id}`: a dónde van las etiquetas de
+/// una orden. `problema` != null = no se puede imprimir (receta sin
+/// etiqueta, etiqueta sin diseñar o ninguna impresora la tiene asignada).
+class DestinoImpresion {
+  DestinoImpresion({required this.impresoras, this.problema, this.etiquetaNombre, this.pidePeso = false});
+
+  factory DestinoImpresion.fromJson(Map<String, dynamic> j) {
+    final etq = j['etiqueta'] as Map<String, dynamic>?;
+    return DestinoImpresion(
+      impresoras: (j['impresoras'] as List? ?? [])
+          .cast<Map<String, dynamic>>()
+          .map(ImpresoraDisponible.fromJson)
+          .toList(),
+      problema: j['problema'] as String?,
+      etiquetaNombre: etq?['nombre'] as String?,
+      pidePeso: etq?['pide_peso'] == true,
+    );
+  }
+
+  final List<ImpresoraDisponible> impresoras;
+  final String? problema;
+  final String? etiquetaNombre;
+  final bool pidePeso;
 }

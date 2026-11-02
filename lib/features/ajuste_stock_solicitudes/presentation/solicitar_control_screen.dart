@@ -10,6 +10,7 @@ import '../../ajuste_stock/domain/ajuste_stock_models.dart' show motivosAjusteSt
 import '../../recepcion/domain/recepcion_models.dart' show UbicacionSimple;
 import '../application/ajuste_stock_solicitudes_providers.dart';
 import '../domain/solicitud_models.dart';
+import 'solicitar_control_ayuda.dart';
 
 enum _Paso { ubicacion, detalle }
 
@@ -104,7 +105,16 @@ class _SolicitarControlScreenState extends ConsumerState<SolicitarControlScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Solicitar control de stock')),
+      appBar: AppBar(
+        title: const Text('Solicitar control de stock'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.help_outline),
+            tooltip: '¿Cómo funciona?',
+            onPressed: () => abrirAyudaSolicitarControl(context),
+          ),
+        ],
+      ),
       body: switch (_paso) {
         _Paso.ubicacion => _PasoUbicacion(
             controller: _ubicacionController,

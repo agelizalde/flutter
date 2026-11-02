@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../app/theme.dart';
 import '../../auth/application/auth_controller.dart';
+import 'ajuste_stock_ayuda.dart';
 
 /// Pantalla de inicio del módulo: solo accesos, sin listar ajustes
 /// previos (a pedido del usuario — el historial completo vive en su
@@ -20,7 +21,16 @@ class AjusteStockHomeScreen extends ConsumerWidget {
     final puedeAsignar = usuario?.tienePermiso('ajuste_stock.asignar') ?? false;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Ajuste de stock')),
+      appBar: AppBar(
+        title: const Text('Ajuste de stock'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.help_outline),
+            tooltip: '¿Cómo funciona?',
+            onPressed: () => abrirAyudaAjusteStock(context),
+          ),
+        ],
+      ),
       body: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(

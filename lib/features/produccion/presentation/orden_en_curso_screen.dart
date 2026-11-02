@@ -8,6 +8,7 @@ import '../../../app/theme.dart';
 import '../../../core/errors/app_exception.dart';
 import '../application/produccion_providers.dart';
 import '../domain/produccion_models.dart';
+import 'orden_en_curso_ayuda.dart';
 
 /// Vuelve a la lista de recetas de Producción sin dejar colgados los pasos
 /// intermedios del flujo (nueva orden, taller, finalizar) en el historial —
@@ -135,6 +136,14 @@ class _OrdenEnCursoScreenState extends ConsumerState<OrdenEnCursoScreen> {
           tooltip: 'Volver',
           onPressed: () => _irAProduccion(context),
         ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.help_outline),
+            tooltip: '¿Cómo funciona?',
+            onPressed: () => abrirAyudaOrdenEnCurso(context),
+          ),
+          const SizedBox(width: 4),
+        ],
       ),
       body: async.when(
         loading: () => const Center(child: CircularProgressIndicator()),
@@ -265,13 +274,18 @@ class _OrdenEnCursoScreenState extends ConsumerState<OrdenEnCursoScreen> {
   }
 }
 
-class _EstadoTerminalCartel extends StatelessWidget {
+class _EstadoTerminalCartel extends ConsumerWidget {
   const _EstadoTerminalCartel({required this.orden});
 
   final OrdenProduccion orden;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Interruptor "Impresiones habilitadas" de la web: apagado, no se
+    // ofrece imprimir etiquetas (mientras carga tampoco).
+    final impresionHabilitada = ref
+        .watch(impresionHabilitadaProvider)
+        .maybeWhen(data: (v) => v, error: (_, _) => true, orElse: () => false);
     final finalizada = orden.estado == 'FINALIZADA';
     OrdenLineaResultado? principal;
     for (final r in orden.resultado) {
@@ -322,12 +336,14 @@ class _EstadoTerminalCartel extends StatelessWidget {
             ],
             const SizedBox(height: 28),
             if (finalizada) ...[
-              ElevatedButton.icon(
-                onPressed: () => context.push('/produccion/taller/${orden.idOrden}/etiquetas'),
-                icon: const Icon(Icons.print_outlined),
-                label: const Text('Ver e imprimir etiquetas'),
-              ),
-              const SizedBox(height: 10),
+              if (impresionHabilitada) ...[
+                ElevatedButton.icon(
+                  onPressed: () => context.push('/produccion/taller/${orden.idOrden}/etiquetas'),
+                  icon: const Icon(Icons.print_outlined),
+                  label: const Text('Ver e imprimir etiquetas'),
+                ),
+                const SizedBox(height: 10),
+              ],
               TextButton(
                 onPressed: () => _irAProduccion(context),
                 child: const Text('Volver a Producción'),

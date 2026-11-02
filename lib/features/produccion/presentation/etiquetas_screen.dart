@@ -1,12 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../../app/theme.dart';
 import '../../../core/errors/app_exception.dart';
-import '../application/impresora_providers.dart';
 import '../application/produccion_providers.dart';
-import '../domain/impresora_config.dart';
+import '../domain/etiqueta_diseno.dart';
 import '../domain/produccion_models.dart';
 import 'widgets/etiqueta_preview.dart';
 
@@ -14,13 +12,6 @@ String _fmtFecha(DateTime fecha) {
   final d = fecha.day.toString().padLeft(2, '0');
   final m = fecha.month.toString().padLeft(2, '0');
   return '$d/$m/${fecha.year}';
-}
-
-bool _esCantidadPesar(EtiquetaTemplate plantilla) {
-  for (final c in plantilla.campos) {
-    if (c.campo == CampoEtiqueta.cantidad && c.cantidadModo == 'PESAR') return true;
-  }
-  return false;
 }
 
 Future<int?> _pedirCantidadCopias(BuildContext context) {
@@ -70,12 +61,27 @@ Future<double?> _pedirPeso(BuildContext context, {required int actual, required 
   );
 }
 
-/// Etiquetas de los lotes generados al finalizar una orden — pedido
-/// explícito del usuario: "conectar directamente con una impresora y que
-/// se pueda configurar los datos... que se configure al crear la receta".
-/// El layout (dimensiones, campos, orden, alineación) sale de la plantilla
-/// reusable asignada a la RECETA (`RecetaDetalle.etiqueta` → `EtiquetaTemplate`
-/// vía `etiquetaTemplateProvider`), no de una config del dispositivo.
+Future<ImpresoraDisponible?> _elegirImpresora(BuildContext context, List<ImpresoraDisponible> impresoras) {
+  return showDialog<ImpresoraDisponible>(
+    context: context,
+    builder: (context) => SimpleDialog(
+      title: const Text('¿En qué impresora?'),
+      children: [
+        for (final imp in impresoras)
+          SimpleDialogOption(
+            onPressed: () => Navigator.of(context).pop(imp),
+            child: Text('${imp.nombre} (${imp.ip})'),
+          ),
+      ],
+    ),
+  );
+}
+
+/// Etiquetas de los lotes generados al finalizar una orden. El layout sale
+/// de la plantilla asignada a la RECETA y la impresión la hace el SERVIDOR
+/// (2026-11-02): manda el ZPL a la impresora que tiene asignada esa
+/// plantilla en la web (Ajustes → Producción → Conexiones). La app ya no
+/// guarda IP de impresora ni se conecta a ella.
 class EtiquetasScreen extends ConsumerStatefulWidget {
   const EtiquetasScreen({super.key, required this.idOrden});
 
@@ -88,87 +94,69 @@ class EtiquetasScreen extends ConsumerStatefulWidget {
 class _EtiquetasScreenState extends ConsumerState<EtiquetasScreen> {
   final Set<String> _imprimiendo = {};
 
-  Future<void> _imprimir(EtiquetaProduccion etiqueta, EtiquetaTemplate plantilla) async {
-    final config = ref.read(impresoraConfigControllerProvider).value;
-    if (config == null || !config.configurada) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Configurá la impresora primero')),
-      );
+  void _aviso(String texto) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(texto)));
+  }
+
+  Future<void> _imprimir(EtiquetaProduccion etiqueta, DestinoImpresion destino) async {
+    if (destino.problema != null || destino.impresoras.isEmpty) {
+      _aviso(destino.problema ?? 'No hay impresora para esta etiqueta');
       return;
     }
 
-    if (_esCantidadPesar(plantilla)) {
-      await _imprimirPesando(etiqueta, plantilla, config);
-      return;
+    var impresora = destino.impresoras.first;
+    if (destino.impresoras.length > 1) {
+      final elegida = await _elegirImpresora(context, destino.impresoras);
+      if (elegida == null || !mounted) return;
+      impresora = elegida;
+    }
+
+    // Etiqueta que pide pesar: el operario carga el peso de cada paquete y
+    // se manda todo junto (una copia por peso).
+    List<double>? pesos;
+    if (destino.pidePeso) {
+      final cantidad = await _pedirCantidadCopias(context);
+      if (cantidad == null || cantidad <= 0 || !mounted) return;
+      pesos = [];
+      for (var i = 1; i <= cantidad; i++) {
+        if (!mounted) return;
+        final peso = await _pedirPeso(context, actual: i, total: cantidad);
+        if (peso == null) break;
+        pesos.add(peso);
+      }
+      if (pesos.isEmpty) return;
     }
 
     setState(() => _imprimiendo.add(etiqueta.loteInterno));
     try {
-      await ref.read(impresoraServiceProvider).imprimirEtiqueta(
-        ip: config.ip!,
-        puerto: config.puerto,
-        etiqueta: etiqueta,
-        plantilla: plantilla,
+      final enviadas = await ref.read(produccionRepositoryProvider).imprimirEtiquetas(
+        idOrden: widget.idOrden,
+        loteInterno: etiqueta.loteInterno,
+        pesos: pesos,
+        idImpresora: impresora.idImpresora,
       );
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Etiqueta enviada a la impresora (${etiqueta.loteInterno})')),
-      );
+      _aviso('$enviadas etiqueta${enviadas == 1 ? '' : 's'} enviada${enviadas == 1 ? '' : 's'} a ${impresora.nombre}');
     } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(describeError(e))));
+      _aviso(describeError(e));
     } finally {
       if (mounted) setState(() => _imprimiendo.remove(etiqueta.loteInterno));
-    }
-  }
-
-  /// La plantilla pide "solicitar que se pese": el operario carga el peso de
-  /// CADA paquete físico, uno por uno, justo antes de imprimir esa copia.
-  Future<void> _imprimirPesando(
-    EtiquetaProduccion etiqueta,
-    EtiquetaTemplate plantilla,
-    ImpresoraConfig config,
-  ) async {
-    final cantidad = await _pedirCantidadCopias(context);
-    if (cantidad == null || cantidad <= 0 || !mounted) return;
-
-    for (var i = 1; i <= cantidad; i++) {
-      if (!mounted) return;
-      final peso = await _pedirPeso(context, actual: i, total: cantidad);
-      if (peso == null) break;
-
-      setState(() => _imprimiendo.add(etiqueta.loteInterno));
-      try {
-        await ref.read(impresoraServiceProvider).imprimirEtiqueta(
-          ip: config.ip!,
-          puerto: config.puerto,
-          etiqueta: etiqueta,
-          plantilla: plantilla,
-          pesoManualKg: peso,
-        );
-      } catch (e) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(describeError(e))));
-        break;
-      } finally {
-        if (mounted) setState(() => _imprimiendo.remove(etiqueta.loteInterno));
-      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final async = ref.watch(etiquetasProvider(widget.idOrden));
-    final config = ref.watch(impresoraConfigControllerProvider).value;
+    final destino = ref.watch(destinoImpresionProvider(widget.idOrden)).value;
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Etiquetas'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.settings_outlined),
-            tooltip: 'Configurar impresora',
-            onPressed: () => context.push('/produccion/impresora'),
+            icon: const Icon(Icons.refresh),
+            tooltip: 'Volver a consultar la impresora',
+            onPressed: () => ref.invalidate(destinoImpresionProvider(widget.idOrden)),
           ),
         ],
       ),
@@ -219,21 +207,32 @@ class _EtiquetasScreenState extends ConsumerState<EtiquetasScreen> {
                 data: (plantilla) => ListView(
                   padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
                   children: [
-                    if (config != null && !config.configurada)
+                    if (destino != null)
                       Container(
                         margin: const EdgeInsets.only(bottom: 16),
                         padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(color: AppColors.waBg, borderRadius: BorderRadius.circular(14)),
+                        decoration: BoxDecoration(
+                          color: destino.problema != null ? AppColors.waBg : AppColors.surface,
+                          borderRadius: BorderRadius.circular(14),
+                        ),
                         child: Row(
                           children: [
-                            const Icon(Icons.warning_amber_rounded, color: AppColors.waTx, size: 20),
-                            const SizedBox(width: 10),
-                            const Expanded(
-                              child: Text('No configuraste una impresora todavía.', style: TextStyle(color: AppColors.waTx, fontWeight: FontWeight.w600)),
+                            Icon(
+                              destino.problema != null ? Icons.warning_amber_rounded : Icons.print_outlined,
+                              color: destino.problema != null ? AppColors.waTx : AppColors.muted,
+                              size: 20,
                             ),
-                            TextButton(
-                              onPressed: () => context.push('/produccion/impresora'),
-                              child: const Text('Configurar'),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                destino.problema ??
+                                    'Imprime en ${destino.impresoras.map((i) => i.nombre).join(' o ')}',
+                                style: TextStyle(
+                                  color: destino.problema != null ? AppColors.waTx : AppColors.text,
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 12.5,
+                                ),
+                              ),
                             ),
                           ],
                         ),
@@ -243,7 +242,9 @@ class _EtiquetasScreenState extends ConsumerState<EtiquetasScreen> {
                         etiqueta: etq,
                         plantilla: plantilla,
                         imprimiendo: _imprimiendo.contains(etq.loteInterno),
-                        onImprimir: () => _imprimir(etq, plantilla),
+                        // Sin destino (impresión deshabilitada, sin impresora
+                        // o etiqueta sin diseñar) no se puede imprimir.
+                        onImprimir: destino == null || destino.problema != null ? null : () => _imprimir(etq, destino),
                       ),
                       const SizedBox(height: 12),
                     ],
@@ -310,7 +311,7 @@ class _EtiquetaCard extends StatefulWidget {
   final EtiquetaProduccion etiqueta;
   final EtiquetaTemplate plantilla;
   final bool imprimiendo;
-  final VoidCallback onImprimir;
+  final VoidCallback? onImprimir;
 
   @override
   State<_EtiquetaCard> createState() => _EtiquetaCardState();
@@ -322,7 +323,7 @@ class _EtiquetaCardState extends State<_EtiquetaCard> {
   @override
   Widget build(BuildContext context) {
     final etiqueta = widget.etiqueta;
-    final esPesar = _esCantidadPesar(widget.plantilla);
+    final esPesar = plantillaPidePeso(widget.plantilla);
 
     return Container(
       padding: const EdgeInsets.all(16),

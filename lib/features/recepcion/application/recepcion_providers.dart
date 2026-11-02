@@ -98,13 +98,15 @@ final recepcionesRecientesProvider = FutureProvider.autoDispose<List<Recepcion>>
 /// `recepcionesRecientesProvider`.
 ///
 /// **Filtro por usuario receptor**: para `PEND_CONTROL` (pantalla/botón
-/// "Pendientes de control") se muestran las de **todo el almacén**, sin
-/// importar quién recibió — el control es una responsabilidad del
-/// almacén, no de quien hizo la recepción, así que cualquiera con el
-/// permiso `recepciones.controlar` debe ver todos los pendientes. Para
-/// cualquier otro caso (Historial general, `INGRESADA`) se sigue
-/// filtrando por el usuario logueado — cada operario ve solo lo que él
-/// mismo recibió.
+/// "Pendientes de control") y para el Historial general se muestran las de
+/// **todo el almacén**, sin importar quién recibió — el Historial muestra
+/// "quién recibió" en cada fila justamente porque mezcla a todos. Para
+/// `INGRESADA` como estado fijo se sigue filtrando por el usuario logueado.
+///
+/// **Historial general sin búsqueda**: solo las últimas
+/// [historialRecepcionesPorDefecto]. Con texto, la búsqueda va al backend
+/// (`q`: proveedor, almacén, ubicación, observación, número o quién
+/// recibió) y trae hasta 50 por estado.
 final recepcionListadoProvider =
     FutureProvider.family.autoDispose<List<Recepcion>, (String query, String? estado)>((ref, params) async {
   refrescarEnAcciones(ref);
@@ -132,7 +134,7 @@ final recepcionListadoProvider =
 
   final repo = ref.watch(recepcionRepositoryProvider);
   final q = query.isEmpty ? null : query;
-  final idUsuarioReceptor = estadoFijo == 'PEND_CONTROL' ? null : usuario.idUsuario;
+  final idUsuarioReceptor = estadoFijo == 'INGRESADA' ? usuario.idUsuario : null;
 
   if (estadoFijo != null) {
     return repo.listarRecepciones(
@@ -144,26 +146,29 @@ final recepcionListadoProvider =
     );
   }
 
+  final limite = q == null ? historialRecepcionesPorDefecto : 50;
   final resultados = await Future.wait([
     repo.listarRecepciones(
       q: q,
       estado: 'PEND_CONTROL',
-      idUsuarioReceptor: usuario.idUsuario,
       idAlmacen: usuario.idAlmacenSeleccionado,
-      limit: 50,
+      limit: limite,
     ),
     repo.listarRecepciones(
       q: q,
       estado: 'INGRESADA',
-      idUsuarioReceptor: usuario.idUsuario,
       idAlmacen: usuario.idAlmacenSeleccionado,
-      limit: 50,
+      limit: limite,
     ),
   ]);
 
-  return [...resultados[0], ...resultados[1]]
+  final combinadas = [...resultados[0], ...resultados[1]]
     ..sort((a, b) => b.idRecepcion.compareTo(a.idRecepcion));
+  return q == null ? combinadas.take(historialRecepcionesPorDefecto).toList() : combinadas;
 });
+
+/// Cuántas recepciones muestra el Historial cuando no se busca nada.
+const historialRecepcionesPorDefecto = 10;
 
 final almacenesProvider = FutureProvider.autoDispose<List<AlmacenSimple>>((
   ref,

@@ -38,10 +38,11 @@
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_color"
             android:resource="@color/notification_color" />
-        <!-- Impeller (motor gráfico nuevo de Flutter) falla en GPUs de
-             Android viejos (pantalla negra / crash al abrir). Se fuerza el
-             renderer anterior para todos los dispositivos. `flutter build`
-             no acepta la flag para desactivar Impeller, por eso va acá. -->
+        <!-- Impeller (motor gráfico nuevo de Flutter) queda prendido por
+             defecto. En Android viejos (pantalla negra / crash al abrir) lo
+             apaga MainActivity.kt al arrancar, según el dispositivo o el
+             "Modo gráfico" de Configuración — así un solo APK sirve para
+             todas las terminales. No cambiar este valor por terminal. -->
         <meta-data
             android:name="io.flutter.embedding.android.EnableImpeller"
             android:value="true" />

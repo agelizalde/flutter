@@ -37,6 +37,13 @@ final recepcionOcDetalleProvider =
   return ref.watch(recepcionRepositoryProvider).obtenerOcParaRecepcion(idOc);
 });
 
+/// Header + TODOS los ítems de la OC (no solo pendientes) — para "Reabrir
+/// recepción", donde una línea ya cargada podría no figurar como pendiente.
+final recepcionOcDetalleCompletoProvider =
+    FutureProvider.family.autoDispose<OrdenCompraDetalle, int>((ref, idOc) {
+  return ref.watch(recepcionRepositoryProvider).obtenerOcParaRecepcion(idOc, soloPendientes: false);
+});
+
 /// Si la OC ya tiene una recepción en BORRADOR sin confirmar (típicamente
 /// porque quedó esperando que se apruebe/firme un exceso de cantidad), la
 /// trae acá en vez de dejar que `RecibirOcItemsScreen` cree otra — crearla

@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import '../../../app/theme.dart';
 import '../../../core/errors/app_exception.dart';
 import '../application/produccion_providers.dart';
+import 'produccion_ayuda.dart';
 import 'widgets/orden_en_curso_tile.dart';
 import 'widgets/receta_tile.dart';
 import 'widgets/seccion_label.dart';
@@ -54,12 +55,18 @@ class _ProduccionHomeScreenState extends ConsumerState<ProduccionHomeScreen> {
               switch (opcion) {
                 case _ProduccionMenuOpcion.misProducciones:
                   context.push('/produccion/mis-producciones');
+                case _ProduccionMenuOpcion.ayuda:
+                  abrirAyudaProduccion(context);
               }
             },
             itemBuilder: (context) => const [
               PopupMenuItem(
                 value: _ProduccionMenuOpcion.misProducciones,
                 child: Text('Ver mis producciones'),
+              ),
+              PopupMenuItem(
+                value: _ProduccionMenuOpcion.ayuda,
+                child: Text('¿Cómo funciona?'),
               ),
               // Más opciones se agregan acá.
             ],
@@ -88,9 +95,7 @@ class _ProduccionHomeScreenState extends ConsumerState<ProduccionHomeScreen> {
                       OrdenEnCursoTile(orden: o),
                       const SizedBox(height: 10),
                     ],
-                    const SizedBox(height: 12),
-                    const Divider(height: 1, color: AppColors.border),
-                    const SizedBox(height: 22),
+                    const SizedBox(height: 14),
                   ],
                 );
               },
@@ -150,6 +155,6 @@ class _ProduccionHomeScreenState extends ConsumerState<ProduccionHomeScreen> {
   }
 }
 
-/// Opciones del menú de arriba a la derecha en el Home de Producción — hoy
-/// solo "Ver mis producciones", pensado para sumar más entradas después.
-enum _ProduccionMenuOpcion { misProducciones }
+/// Opciones del menú de arriba a la derecha en el Home de Producción —
+/// "Ver mis producciones" y la presentación del módulo.
+enum _ProduccionMenuOpcion { misProducciones, ayuda }

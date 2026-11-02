@@ -41,6 +41,19 @@ class ProduccionRepository {
 
   Future<List<EtiquetaProduccion>> etiquetas(int idOrden) => _api.etiquetas(idOrden);
 
+  Future<bool> impresionHabilitada() => _api.impresionHabilitada();
+
+  Future<DestinoImpresion> destinoImpresion(int idOrden) => _api.destinoImpresion(idOrden);
+
+  Future<int> imprimirEtiquetas({
+    required int idOrden,
+    required String loteInterno,
+    int copias = 1,
+    List<double>? pesos,
+    int? idImpresora,
+  }) =>
+      _api.imprimirEtiquetas(idOrden: idOrden, loteInterno: loteInterno, copias: copias, pesos: pesos, idImpresora: idImpresora);
+
   /// Solo las órdenes donde el usuario es creador u operario (ver
   /// `orden_service.py::ordenes_list`) — cada operario "retoma" lo suyo, no
   /// lo que otro compañero dejó en curso en el mismo almacén.

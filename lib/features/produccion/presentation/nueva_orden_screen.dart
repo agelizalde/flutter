@@ -9,6 +9,7 @@ import '../../../core/errors/app_exception.dart';
 import '../../auth/application/auth_controller.dart';
 import '../application/produccion_providers.dart';
 import '../domain/produccion_models.dart';
+import 'nueva_orden_ayuda.dart';
 import 'widgets/seccion_label.dart';
 
 String _fmtDuracion(int segundos) {
@@ -30,10 +31,10 @@ String _fmtQty(double v) {
 ///
 /// Estética alineada a `ProduccionHomeScreen` (tarjetas planas blancas con
 /// borde/ícono en cuadrado `accentSoft`, rótulos de sección uppercase vía
-/// `SeccionLabel`) — antes tenía un cartel con gradiente de color por
-/// "nivel" que no compartía look con el resto del flujo. El color ahora se
-/// reserva para lo que de verdad puede salir mal: la cantidad (de ella se
-/// escala todo lo demás), si hace falta ayuda para producir y los errores.
+/// `SeccionLabel`) y a la demo de `nueva_orden_ayuda.dart`, que la dibuja
+/// en chico. El color se reserva para lo que de verdad puede salir mal: la
+/// cantidad (de ella se escala todo lo demás), si hace falta ayuda para
+/// producir y los errores.
 class NuevaOrdenScreen extends ConsumerStatefulWidget {
   const NuevaOrdenScreen({super.key, required this.idReceta});
 
@@ -122,7 +123,28 @@ class _NuevaOrdenScreenState extends ConsumerState<NuevaOrdenScreen> {
     final async = ref.watch(recetaDetalleProvider(widget.idReceta));
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Nueva producción')),
+      appBar: AppBar(
+        title: const Text('Nueva producción'),
+        actions: [
+          // Mismo menú ⋮ que `ProduccionHomeScreen`, con la presentación de
+          // esta pantalla.
+          PopupMenuButton<_NuevaOrdenMenuOpcion>(
+            icon: const Icon(Icons.more_vert),
+            onSelected: (opcion) {
+              switch (opcion) {
+                case _NuevaOrdenMenuOpcion.ayuda:
+                  abrirAyudaNuevaOrden(context);
+              }
+            },
+            itemBuilder: (context) => const [
+              PopupMenuItem(
+                value: _NuevaOrdenMenuOpcion.ayuda,
+                child: Text('¿Cómo funciona?'),
+              ),
+            ],
+          ),
+        ],
+      ),
       body: async.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(
@@ -148,17 +170,15 @@ class _NuevaOrdenScreenState extends ConsumerState<NuevaOrdenScreen> {
       );
     }
 
-    final tier = tierInfoFor(receta.vecesProducida);
     final necesitaAyuda = receta.usuariosRequeridos > 1;
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
       children: [
-        // Cartel de la receta — misma tarjeta plana blanca con avatar
-        // cuadrado `accentSoft` que usa `RecetaTile` en el Home, para que se
-        // sienta el mismo lugar. El color ya no lo decide el "nivel": lo
-        // decide si esta receta necesita más de un operario, el único dato
-        // acá que de verdad importa que el operario note antes de arrancar.
+        // Cartel de la receta — misma fila que `RecetaTile` del Home y que la
+        // demo de `nueva_orden_ayuda.dart`: nombre a la izquierda, tiempo de
+        // referencia a la derecha. El único color es el aviso de operarios:
+        // lo único acá que el operario tiene que notar antes de arrancar.
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
@@ -170,7 +190,6 @@ class _NuevaOrdenScreenState extends ConsumerState<NuevaOrdenScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Container(
                     width: 46,
@@ -180,57 +199,39 @@ class _NuevaOrdenScreenState extends ConsumerState<NuevaOrdenScreen> {
                   ),
                   const SizedBox(width: 14),
                   Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          receta.nombre,
-                          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17, color: AppColors.text),
-                        ),
-                        const SizedBox(height: 3),
-                        Row(
-                          children: [
-                            Icon(tier.icon, size: 12, color: tier.color),
-                            const SizedBox(width: 4),
-                            Text(
-                              '${tier.label} · producida ${receta.vecesProducida}x',
-                              style: TextStyle(fontSize: 12, color: tier.color, fontWeight: FontWeight.w700),
-                            ),
-                          ],
-                        ),
-                      ],
+                    child: Text(
+                      receta.nombre,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17, color: AppColors.text),
                     ),
                   ),
-                ],
-              ),
-              const SizedBox(height: 14),
-              Row(
-                children: [
-                  _InfoChip(icono: Icons.timer_outlined, texto: _fmtDuracion(receta.tiempoReferenciaSegundos)),
-                  const SizedBox(width: 8),
-                  _InfoChip(
-                    icono: Icons.groups_outlined,
-                    texto: '${receta.usuariosRequeridos} operario(s)',
-                    // El único dato de esta tarjeta que puede llevar a un
-                    // error real: si arrancás solo una receta pensada para
-                    // varios, te quedás a mitad de camino sin poder seguir.
-                    alerta: necesitaAyuda,
+                  const SizedBox(width: 10),
+                  const Icon(Icons.timer_outlined, size: 14, color: AppColors.faint),
+                  const SizedBox(width: 4),
+                  Text(
+                    _fmtDuracion(receta.tiempoReferenciaSegundos),
+                    style: const TextStyle(fontSize: 12, color: AppColors.muted, fontWeight: FontWeight.w600),
                   ),
                 ],
               ),
               if (necesitaAyuda) ...[
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    const Icon(Icons.info_outline, size: 14, color: AppColors.alertTx),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        'Esta receta necesita ${receta.usuariosRequeridos} operarios — consegí ayuda antes de arrancar.',
-                        style: const TextStyle(fontSize: 12, color: AppColors.alertTx, fontWeight: FontWeight.w600),
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  decoration: BoxDecoration(color: AppColors.alertBg, borderRadius: BorderRadius.circular(10)),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.groups_outlined, size: 16, color: AppColors.alertTx),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Esta receta necesita ${receta.usuariosRequeridos} operarios — conseguí ayuda antes de arrancar.',
+                          style: const TextStyle(fontSize: 12, color: AppColors.alertTx, fontWeight: FontWeight.w600),
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ],
             ],
@@ -292,19 +293,6 @@ class _NuevaOrdenScreenState extends ConsumerState<NuevaOrdenScreen> {
                   suffixStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.muted),
                 ),
               ),
-              const SizedBox(height: 8),
-              const Row(
-                children: [
-                  Icon(Icons.bolt, size: 13, color: AppColors.accent),
-                  SizedBox(width: 5),
-                  Expanded(
-                    child: Text(
-                      'Revisala bien: de acá se recalcula todo lo que sigue.',
-                      style: TextStyle(fontSize: 11.5, color: AppColors.muted, fontWeight: FontWeight.w600),
-                    ),
-                  ),
-                ],
-              ),
             ],
           ),
         ),
@@ -341,35 +329,8 @@ class _NuevaOrdenScreenState extends ConsumerState<NuevaOrdenScreen> {
   }
 }
 
-/// Pastilla plana (fondo `soft`/texto `muted`, mismo peso visual que las
-/// tarjetas del Home) — con `alerta: true` pasa a naranja para señalar el
-/// único dato de esta tarjeta que puede derivar en un error real (arrancar
-/// solo una receta que necesita ayuda).
-class _InfoChip extends StatelessWidget {
-  const _InfoChip({required this.icono, required this.texto, this.alerta = false});
-
-  final IconData icono;
-  final String texto;
-  final bool alerta;
-
-  @override
-  Widget build(BuildContext context) {
-    final bg = alerta ? AppColors.alertBg : AppColors.soft;
-    final fg = alerta ? AppColors.alertTx : AppColors.muted;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(999)),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icono, size: 14, color: fg),
-          const SizedBox(width: 5),
-          Text(texto, style: TextStyle(color: fg, fontWeight: FontWeight.w700, fontSize: 12)),
-        ],
-      ),
-    );
-  }
-}
+/// Opciones del menú ⋮ de Nueva producción.
+enum _NuevaOrdenMenuOpcion { ayuda }
 
 /// Banner de error consistente con el resto de la app (`erBg`/`erTx` +
 /// ícono), en vez de texto suelto — un error acá (ej. stock insuficiente al
@@ -426,8 +387,12 @@ class _FilaInsumo extends StatelessWidget {
   }
 }
 
-/// Estimado en vivo — resultado y merma esperados combinados por posición
-/// con la receta (mismo orden que devuelve el backend en ambas consultas).
+/// Estimado en vivo — mismo dibujo que la demo de `nueva_orden_ayuda.dart`:
+/// tiempo, operarios y el resultado principal en una fila; los demás
+/// resultados debajo y cada merma como una línea en tono de advertencia
+/// (`waTx`), para que no se lea como "otro resultado más". Resultado y
+/// merma se combinan por posición con la receta (mismo orden que devuelve
+/// el backend en ambas consultas).
 class _PreviewCartel extends StatelessWidget {
   const _PreviewCartel({required this.receta, required this.preview});
 
@@ -436,6 +401,17 @@ class _PreviewCartel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final resultados = receta.resultado.length == preview.resultado.length
+        ? [
+            for (var i = 0; i < receta.resultado.length; i++)
+              (
+                nombre: receta.resultado[i].productoNombre,
+                valor: '${_fmtQty(preview.resultado[i].cantidadPlanificada)} ${receta.resultado[i].unidadSimbolo}',
+              ),
+          ]
+        : const <({String nombre, String valor})>[];
+    final mermasOk = receta.mermas.length == preview.mermas.length;
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -446,57 +422,49 @@ class _PreviewCartel extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
+          const Row(
             children: [
-              const Icon(Icons.auto_awesome, size: 16, color: AppColors.accentDark),
-              const SizedBox(width: 6),
-              const Text('El sistema estima', style: TextStyle(fontWeight: FontWeight.w700, color: AppColors.accentDark, fontSize: 12.5)),
+              Icon(Icons.auto_awesome, size: 16, color: AppColors.accentDark),
+              SizedBox(width: 6),
+              Text('El sistema estima', style: TextStyle(fontWeight: FontWeight.w700, color: AppColors.accentDark, fontSize: 12.5)),
             ],
           ),
           const SizedBox(height: 12),
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: _EstimadoTile(label: 'Tiempo', valor: _fmtDuracion(preview.tiempoEstimadoSegundos)),
-              ),
+              Expanded(child: _EstimadoTile(label: 'Tiempo', valor: _fmtDuracion(preview.tiempoEstimadoSegundos))),
               const SizedBox(width: 10),
-              Expanded(
-                child: _EstimadoTile(label: 'Operarios', valor: '${preview.usuariosRequeridos}'),
-              ),
+              Expanded(child: _EstimadoTile(label: 'Operarios', valor: '${preview.usuariosRequeridos}')),
+              if (resultados.isNotEmpty) ...[
+                const SizedBox(width: 10),
+                Expanded(flex: 2, child: _EstimadoTile(label: resultados.first.nombre, valor: resultados.first.valor)),
+              ],
             ],
           ),
-          if (receta.resultado.length == preview.resultado.length)
-            for (var i = 0; i < receta.resultado.length; i++)
-              Padding(
-                padding: const EdgeInsets.only(top: 10),
-                child: _EstimadoTile(
-                  label: receta.resultado[i].productoNombre,
-                  valor: '${_fmtQty(preview.resultado[i].cantidadPlanificada)} ${receta.resultado[i].unidadSimbolo}',
-                  ancho: double.infinity,
-                ),
-              ),
-          if (receta.mermas.length == preview.mermas.length && receta.mermas.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            const Divider(height: 1, color: Color(0x22000000)),
-            const SizedBox(height: 10),
-            // Merma = producto que se pierde en esta producción — se separa
-            // visualmente en tono de advertencia (mismo `waBg`/`waTx` que
-            // usa el resto de la app para avisos suaves) para que no se lea
-            // como "otro resultado más" al pasar la vista rápido.
-            Row(
-              children: [
-                const Icon(Icons.local_fire_department_outlined, size: 13, color: AppColors.waTx),
-                const SizedBox(width: 5),
-                Text('MERMA ESPERADA', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, letterSpacing: 0.6, color: AppColors.waTx.withValues(alpha: 0.85))),
-              ],
+          for (final r in resultados.skip(1))
+            Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: _EstimadoTile(label: r.nombre, valor: r.valor, ancho: double.infinity),
             ),
-            const SizedBox(height: 8),
+          if (mermasOk && receta.mermas.isNotEmpty) ...[
+            const SizedBox(height: 12),
             for (var i = 0; i < receta.mermas.length; i++)
               Padding(
-                padding: const EdgeInsets.only(bottom: 6),
+                padding: EdgeInsets.only(top: i > 0 ? 6 : 0),
                 child: Row(
                   children: [
-                    Expanded(child: Text(receta.mermas[i].productoNombre, style: const TextStyle(fontSize: 12.5, color: AppColors.sub))),
+                    const Icon(Icons.local_fire_department_outlined, size: 14, color: AppColors.waTx),
+                    const SizedBox(width: 5),
+                    Expanded(
+                      child: Text(
+                        'Merma · ${receta.mermas[i].productoNombre}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 12.5, color: AppColors.sub),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
                     Text(
                       '${_fmtQty(preview.mermas[i].cantidadPlanificada)} ${receta.mermas[i].unidadSimbolo}',
                       style: const TextStyle(fontSize: 12.5, color: AppColors.waTx, fontWeight: FontWeight.w800),
@@ -525,7 +493,7 @@ class _EstimadoTile extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: const TextStyle(fontSize: 11, color: AppColors.muted, fontWeight: FontWeight.w600)),
+          Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: AppColors.muted, fontWeight: FontWeight.w600)),
           const SizedBox(height: 2),
           Text(valor, style: const TextStyle(fontSize: 15, color: AppColors.text, fontWeight: FontWeight.w800)),
         ],

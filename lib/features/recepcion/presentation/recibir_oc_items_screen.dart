@@ -11,6 +11,7 @@ import '../../../core/utils/parsing.dart';
 import '../application/recepcion_oc_providers.dart';
 import '../application/recepcion_providers.dart';
 import '../domain/orden_compra_models.dart';
+import '../domain/recepcion_models.dart';
 
 // Azul de la app (`AppColors.accent`) para fondo, encabezado, píldoras y
 // botón; los tildes de ítem listo van en verde (`_verde`).
@@ -41,14 +42,26 @@ DateTime? _fechaMinimaVencimiento(int? vidaUtilDias) {
 /// real que hay que cargar pesando — arranca vacío a propósito (no
 /// precargado con lo pendiente) para que la persona no confirme sin pesar.
 class _ItemFormState {
-  _ItemFormState(this.item)
-    : cantidadCtrl = TextEditingController(text: item.requierePesaje ? '' : _fmtQty(item.cantidadPendiente)),
-      rechazadaCtrl = TextEditingController(text: '0'),
-      observacionCtrl = TextEditingController(),
-      observacionRechazoCtrl = TextEditingController(),
-      loteCtrl = TextEditingController();
+  _ItemFormState(this.item, {this.existente})
+    : cantidadCtrl = TextEditingController(
+        text: existente != null
+            ? _fmtQty(existente.cantidad)
+            : (item.requierePesaje ? '' : _fmtQty(item.cantidadPendiente)),
+      ),
+      rechazadaCtrl = TextEditingController(text: existente != null ? _fmtQty(existente.cantidadRechazada) : '0'),
+      observacionCtrl = TextEditingController(text: existente?.observacion ?? ''),
+      observacionRechazoCtrl = TextEditingController(text: existente?.observacionRechazo ?? ''),
+      loteCtrl = TextEditingController(text: existente?.loteProveedor ?? ''),
+      fechaVencimiento = existente?.fechaVencimiento,
+      fechaFaenado = existente?.fechaFaenado;
 
   final OrdenCompraItemDetalle item;
+
+  /// Línea ya existente de la recepción que se está reabriendo (`null` al
+  /// crear). Se actualiza con la respuesta de cada PATCH para que un
+  /// reintento use el `row_version` nuevo.
+  RecepcionItem? existente;
+
   final TextEditingController cantidadCtrl;
   final TextEditingController rechazadaCtrl;
   final TextEditingController observacionCtrl;
@@ -144,10 +157,16 @@ class _ItemFormState {
 /// (`PATCH /recepciones/items/{id}`) y se entra al detalle de la recepción
 /// ya existente (`RecepcionDetalleScreen`) para confirmarla — como
 /// cualquier recepción manual, no se duplica esa lógica acá.
+///
+/// Con `idRecepcion` es "Reabrir recepción" (desde `RecepcionDetalleScreen`):
+/// las tarjetas arrancan con lo ya cargado en esa recepción en BORRADOR y al
+/// guardar se editan sus líneas (no se crea otra ni se agregan productos) y
+/// se vuelve al detalle para confirmar.
 class RecibirOcItemsScreen extends ConsumerStatefulWidget {
-  const RecibirOcItemsScreen({super.key, required this.idOc});
+  const RecibirOcItemsScreen({super.key, required this.idOc, this.idRecepcion});
 
   final int idOc;
+  final int? idRecepcion;
 
   @override
   ConsumerState<RecibirOcItemsScreen> createState() => _RecibirOcItemsScreenState();
@@ -166,10 +185,15 @@ class _RecibirOcItemsScreenState extends ConsumerState<RecibirOcItemsScreen> {
     super.dispose();
   }
 
-  void _prepararForms(List<OrdenCompraItemDetalle> items) {
+  void _prepararForms(List<OrdenCompraItemDetalle> items, {Map<int, RecepcionItem> existentes = const {}}) {
     if (_formsListos) return;
     for (final item in items) {
-      _forms[item.idOcItem] = _ItemFormState(item);
+      final form = _ItemFormState(item, existente: existentes[item.idOcItem]);
+      // Reabrir: un producto de la OC que sigue pendiente pero no está en
+      // la recepción (se quitó antes) aparece con la X puesta; si se vuelve
+      // a agregar, se suma a la recepción al guardar.
+      if (widget.idRecepcion != null && form.existente == null) form.quitado = true;
+      _forms[item.idOcItem] = form;
     }
     _formsListos = true;
   }
@@ -209,6 +233,11 @@ class _RecibirOcItemsScreenState extends ConsumerState<RecibirOcItemsScreen> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('No quedó ningún ítem para recibir ni rechazar.')));
+      return;
+    }
+
+    if (widget.idRecepcion != null) {
+      await _guardarReapertura(items);
       return;
     }
 
@@ -303,8 +332,112 @@ class _RecibirOcItemsScreenState extends ConsumerState<RecibirOcItemsScreen> {
     }
   }
 
+  /// Reabrir: edita las líneas existentes de la recepción (PATCH) con lo
+  /// cargado en las tarjetas. Lo que se marca con la X (o queda 0/0) se
+  /// quita y queda pendiente en la OC; nunca se agregan productos. Al terminar vuelve al
+  /// detalle (`pop(true)`) para confirmar.
+  Future<void> _guardarReapertura(List<OrdenCompraItemDetalle> items) async {
+    setState(() => _guardando = true);
+    try {
+      final repo = ref.read(recepcionRepositoryProvider);
+      final pendientesAutorizacion = <String>[];
+
+      for (final item in items) {
+        final form = _forms[item.idOcItem]!;
+        final existente = form.existente;
+        if (existente == null) {
+          if (form.seQuita) continue;
+          final agregado = await repo.agregarItem(
+            idRecepcion: widget.idRecepcion!,
+            idProducto: item.idProducto,
+            idUnidadMedida: item.idUnidadMedida,
+            idOrdenCompraItem: item.idOcItem,
+            cantidad: form.cantidad!,
+            cantidadRechazada: form.rechazada,
+            loteProveedor: form.loteCtrl.text.trim().isEmpty ? null : form.loteCtrl.text.trim(),
+            fechaVencimiento: form.fechaVencimiento,
+            fechaFaenado: form.fechaFaenado,
+            observacion: form.observacionCtrl.text.trim().isEmpty ? null : form.observacionCtrl.text.trim(),
+            observacionRechazo: form.observacionRechazoCtrl.text.trim().isEmpty
+                ? null
+                : form.observacionRechazoCtrl.text.trim(),
+          );
+          // Si un paso posterior falla, el reintento la edita en vez de
+          // volver a insertarla.
+          form.existente = agregado;
+          if (agregado.diferenciaPeso?.pendiente == true || agregado.excesoCantidad?.pendiente == true) {
+            pendientesAutorizacion.add(item.productoNombre);
+          }
+          continue;
+        }
+        if (form.seQuita) {
+          await repo.quitarItem(idRecepcionItem: existente.idRecepcionItem, expectedVersion: existente.rowVersion);
+          continue;
+        }
+        final itemResultado = await repo.editarItem(
+          idRecepcionItem: existente.idRecepcionItem,
+          expectedVersion: existente.rowVersion,
+          cantidad: form.cantidad!,
+          cantidadRechazada: form.rechazada,
+          loteProveedor: form.loteCtrl.text.trim().isEmpty ? null : form.loteCtrl.text.trim(),
+          fechaVencimiento: form.fechaVencimiento,
+          fechaFaenado: form.fechaFaenado,
+          observacion: form.observacionCtrl.text.trim().isEmpty ? null : form.observacionCtrl.text.trim(),
+          observacionRechazo: form.observacionRechazoCtrl.text.trim().isEmpty
+              ? null
+              : form.observacionRechazoCtrl.text.trim(),
+        );
+        form.existente = itemResultado;
+
+        if (itemResultado.diferenciaPeso?.pendiente == true) {
+          final pct = itemResultado.diferenciaPeso!.porcentajeDiferencia;
+          pendientesAutorizacion.add(
+            '${item.productoNombre}${pct != null ? ' (${pct.toStringAsFixed(2)}% de diferencia de peso)' : ''}',
+          );
+        }
+        if (itemResultado.excesoCantidad?.pendiente == true) {
+          final pct = itemResultado.excesoCantidad!.porcentajeVariacion;
+          pendientesAutorizacion.add(
+            '${item.productoNombre}${pct != null ? ' (${pct.toStringAsFixed(2)}% de exceso de cantidad)' : ''}',
+          );
+        }
+      }
+
+      ref.invalidate(recepcionDetalleProvider(widget.idRecepcion!));
+      ref.invalidate(recepcionesRecientesProvider);
+      ref.invalidate(recepcionListadoProvider);
+      if (!mounted) return;
+
+      if (pendientesAutorizacion.isNotEmpty) {
+        await showDialog<void>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: const Text('Diferencias pendientes de autorización'),
+            content: Text(
+              'Hay diferencias pendientes de autorización en: '
+              '${pendientesAutorizacion.join(', ')}.\n\n'
+              'No vas a poder confirmar la recepción hasta que se resuelvan desde '
+              'Firmas · Solicitudes.',
+            ),
+            actions: [TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: const Text('Entendido'))],
+          ),
+        );
+      }
+
+      if (!mounted) return;
+      context.pop(true);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(describeError(e))));
+    } finally {
+      if (mounted) setState(() => _guardando = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (widget.idRecepcion != null) return _buildReapertura(widget.idRecepcion!);
+
     final async = ref.watch(recepcionOcDetalleProvider(widget.idOc));
     final borradorAsync = ref.watch(recepcionOcBorradorExistenteProvider(widget.idOc));
 
@@ -325,7 +458,46 @@ class _RecibirOcItemsScreenState extends ConsumerState<RecibirOcItemsScreen> {
     );
   }
 
-  Widget _buildItems(AsyncValue<OrdenCompraDetalle> async) {
+  /// Reabrir: OC completa (no solo pendientes: una línea de la recepción
+  /// podría ya no figurar como pendiente) cruzada con las líneas activas de
+  /// la recepción — se muestran las que la recepción tiene, más las que
+  /// siguen pendientes en la OC (nadie más las recibió) marcadas con la X.
+  Widget _buildReapertura(int idRecepcion) {
+    final ocAsync = ref.watch(recepcionOcDetalleCompletoProvider(widget.idOc));
+    final recepcionAsync = ref.watch(recepcionDetalleProvider(idRecepcion));
+
+    return Scaffold(
+      backgroundColor: AppColors.pageBg,
+      appBar: AppBar(title: Text('Reabrir recepción #$idRecepcion'), backgroundColor: _pastel),
+      body: recepcionAsync.when(
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (e, _) => Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Text(describeError(e), textAlign: TextAlign.center, style: const TextStyle(color: AppColors.erTx)),
+          ),
+        ),
+        data: (detalle) {
+          final existentes = <int, RecepcionItem>{
+            for (final it in detalle.items)
+              if (it.idOrdenCompraItem != null) it.idOrdenCompraItem!: it,
+          };
+          final filtrado = ocAsync.whenData(
+            (oc) => OrdenCompraDetalle(
+              header: oc.header,
+              items: [
+                for (final it in oc.items)
+                  if (existentes.containsKey(it.idOcItem) || it.cantidadPendiente > 0) it,
+              ],
+            ),
+          );
+          return _buildItems(filtrado, existentes: existentes);
+        },
+      ),
+    );
+  }
+
+  Widget _buildItems(AsyncValue<OrdenCompraDetalle> async, {Map<int, RecepcionItem> existentes = const {}}) {
     return async.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => Center(
@@ -352,7 +524,7 @@ class _RecibirOcItemsScreenState extends ConsumerState<RecibirOcItemsScreen> {
           );
         }
 
-        _prepararForms(detalle.items);
+        _prepararForms(detalle.items, existentes: existentes);
         final forms = [for (final item in detalle.items) _forms[item.idOcItem]!];
 
         return DecoratedBox(
@@ -415,7 +587,10 @@ class _RecibirOcItemsScreenState extends ConsumerState<RecibirOcItemsScreen> {
                             width: 20,
                             child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                           )
-                        : const Text('Continuar', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                        : Text(
+                            widget.idRecepcion != null ? 'Guardar cambios' : 'Continuar',
+                            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+                          ),
                   ),
                 ),
               ),
@@ -445,20 +620,42 @@ class _BorradorExistenteAviso extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.pending_actions_outlined, size: 40, color: AppColors.accentDark),
-            const SizedBox(height: 14),
-            Text(
-              'Esta OC ya tiene la recepción #$idRecepcion en BORRADOR sin '
-              'confirmar (posiblemente esperando que se apruebe/firme un '
-              'exceso de cantidad).\n\nContinuá esa recepción en vez de crear '
-              'una nueva, para no duplicar la cantidad recibida.',
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: AppColors.muted, fontSize: 13.5, height: 1.5),
+            Container(
+              width: 64,
+              height: 64,
+              decoration: const BoxDecoration(color: _pastel, shape: BoxShape.circle),
+              child: const Icon(Icons.inventory_2_outlined, size: 30, color: _oscuro),
             ),
-            const SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: () => context.pushReplacement('/recepcion/$idRecepcion'),
-              child: const Text('Ir a esa recepción'),
+            const SizedBox(height: 16),
+            const Text(
+              'Esta OC ya se empezó a recibir',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.text),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'No hace falta empezar de nuevo. Abrí la recepción, revisá que '
+              'esté todo bien y confirmala.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: AppColors.sub, fontSize: 14, height: 1.45),
+            ),
+            const SizedBox(height: 22),
+            SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: FilledButton(
+                onPressed: () => context.pushReplacement('/recepcion/$idRecepcion'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: _oscuro,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
+                ),
+                child: const Text('Continuar recepción', style: TextStyle(fontWeight: FontWeight.w800)),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'Recepción #$idRecepcion',
+              style: const TextStyle(fontSize: 12, color: AppColors.muted),
             ),
           ],
         ),

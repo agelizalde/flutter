@@ -2,15 +2,23 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../app/theme.dart';
+import '../../../../core/utils/parsing.dart';
 import '../../domain/recepcion_models.dart';
 
 /// Fila de recepción reusada por `RecepcionHomeScreen` (últimas 5) y
-/// `RecepcionHistorialScreen` (historial completo) — una sola definición
-/// para que ambas pantallas se vean y comporten igual.
+/// `RecepcionHistorialScreen` (historial y pendientes de control) — una
+/// sola definición para que las pantallas se vean y comporten igual.
+///
+/// Con [historial] el texto pasa a:
+///   **Proveedor - dd/mm/aaaa**
+///   Recibió: usuario
+/// (el Historial mezcla recepciones de todo el almacén, así que importa
+/// cuándo y quién, no el almacén ni los ítems).
 class RecepcionTile extends StatelessWidget {
-  const RecepcionTile({super.key, required this.recepcion});
+  const RecepcionTile({super.key, required this.recepcion, this.historial = false});
 
   final Recepcion recepcion;
+  final bool historial;
 
   @override
   Widget build(BuildContext context) {
@@ -51,7 +59,7 @@ class RecepcionTile extends StatelessWidget {
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
+                    children: historial ? _textoHistorial() : [
                       Text(
                         recepcion.proveedorNombre,
                         maxLines: 1,
@@ -96,6 +104,27 @@ class RecepcionTile extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+extension on RecepcionTile {
+  List<Widget> _textoHistorial() {
+    final fecha = recepcion.fechaRecepcion;
+    return [
+      Text(
+        fecha == null ? recepcion.proveedorNombre : '${recepcion.proveedorNombre} - ${formatFecha(fecha)}',
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: AppColors.text),
+      ),
+      const SizedBox(height: 2),
+      Text(
+        'Recibió: ${recepcion.receptorUsername ?? '—'}',
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(fontSize: 12, color: AppColors.muted),
+      ),
+    ];
   }
 }
 

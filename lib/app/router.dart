@@ -46,7 +46,6 @@ import '../features/picking_operario/presentation/picking_home_screen.dart';
 import '../features/picking_operario/presentation/picking_trabajo_screen.dart';
 import '../features/picking_operario/presentation/quitar_productos_screen.dart';
 import '../features/picking_operario/presentation/zona_selector_screen.dart';
-import '../features/produccion/presentation/configurar_impresora_screen.dart';
 import '../features/produccion/presentation/etiquetas_screen.dart';
 import '../features/produccion/presentation/finalizar_orden_screen.dart';
 import '../features/produccion/presentation/mis_producciones_screen.dart';
@@ -300,7 +299,11 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/recepcion/oc/:idOc/items',
         builder: (context, state) => DebugScreenTag(
           label: 'Recepción · Ítems de OC',
-          child: RecibirOcItemsScreen(idOc: int.parse(state.pathParameters['idOc']!)),
+          child: RecibirOcItemsScreen(
+            idOc: int.parse(state.pathParameters['idOc']!),
+            // ?recepcion=ID → "Reabrir recepción" desde el detalle.
+            idRecepcion: int.tryParse(state.uri.queryParameters['recepcion'] ?? ''),
+          ),
         ),
       ),
       // Vista de solo lectura de una OC, alimentada por el buscador/escáner
@@ -497,11 +500,6 @@ final routerProvider = Provider<GoRouter>((ref) {
           label: 'Producción · Etiquetas',
           child: EtiquetasScreen(idOrden: int.parse(state.pathParameters['id']!)),
         ),
-      ),
-      GoRoute(
-        path: '/produccion/impresora',
-        builder: (context, state) =>
-            const DebugScreenTag(label: 'Producción · Configurar impresora', child: ConfigurarImpresoraScreen()),
       ),
       GoRoute(
         path: '/expedicion',

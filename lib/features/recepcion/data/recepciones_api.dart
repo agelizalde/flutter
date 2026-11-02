@@ -107,6 +107,9 @@ class RecepcionesApi {
     DateTime? fechaVencimiento,
     DateTime? fechaFaenado,
     String? observacion,
+    int? idOrdenCompraItem,
+    double? cantidadRechazada,
+    String? observacionRechazo,
   }) async {
     final res = await _dio.post<Map<String, dynamic>>(
       '/recepciones/$idRecepcion/items',
@@ -118,6 +121,9 @@ class RecepcionesApi {
         'fecha_vencimiento': ?fechaVencimiento?.toIso8601String(),
         'fecha_faenado': ?fechaFaenado?.toIso8601String(),
         'observacion': ?observacion,
+        'id_orden_compra_item': ?idOrdenCompraItem,
+        'cantidad_rechazada': ?cantidadRechazada,
+        'observacion_rechazo': ?observacionRechazo,
       },
     );
     return RecepcionItem.fromJson(res.data!);
@@ -162,6 +168,17 @@ class RecepcionesApi {
   }) {
     return _dio.post<void>(
       '/recepciones/items/$idRecepcionItem/desactivar',
+      data: {'expected_version': expectedVersion},
+    );
+  }
+
+  /// Anula una recepción en BORRADOR (`recepcion_service.py::recepcion_anular_header`).
+  Future<void> anular({
+    required int idRecepcion,
+    required int expectedVersion,
+  }) {
+    return _dio.post<void>(
+      '/recepciones/$idRecepcion/anular',
       data: {'expected_version': expectedVersion},
     );
   }

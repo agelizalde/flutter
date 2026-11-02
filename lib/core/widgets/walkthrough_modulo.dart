@@ -9,7 +9,9 @@ import '../../app/theme.dart';
 /// registro de vistas).
 ///
 /// Tres pantallas, una idea por pantalla: 1) para qué sirve, 2) cómo
-/// funciona (demo animada + 3 pasos), 3) un consejo. Todo usa el color del
+/// funciona (demo animada + 3 pasos), 3) un consejo. Si el módulo tiene
+/// varias formas de uso (ej. los 3 tipos de Ajuste de stock), [tipos] reemplaza
+/// a la pantalla 2 por una pantalla "Cómo funciona" por cada tipo. Todo usa el color del
 /// módulo en el menú (`home_screen.dart`): fondo, números de los pasos y
 /// botón. Cada módulo define solo su [WalkthroughModulo] y su demo (armada
 /// con [WalkthroughDemo] + [WalkthroughDedo]) — ver
@@ -22,10 +24,11 @@ class WalkthroughModulo {
     required this.fuerte,
     required this.oscuro,
     required this.proposito,
-    required this.pasos,
+    this.pasos = const [],
     required this.consejo,
     required this.textoFinal,
-    required this.demo,
+    this.demo,
+    this.tipos = const [],
   });
 
   final IconData icono;
@@ -51,6 +54,24 @@ class WalkthroughModulo {
   final String textoFinal;
 
   /// Demo de la pantalla "Cómo funciona", armada con [WalkthroughDemo].
+  /// Nulo solo si se usan [tipos].
+  final Widget? demo;
+
+  /// Una pantalla "Cómo funciona" por tipo, en lugar de [pasos] + [demo].
+  final List<WalkthroughTipo> tipos;
+
+  List<WalkthroughTipo> get _comoFunciona =>
+      tipos.isNotEmpty ? tipos : [WalkthroughTipo(titulo: 'Cómo funciona', pasos: pasos, demo: demo!)];
+}
+
+/// Una forma de usar el módulo, con su propia pantalla "Cómo funciona":
+/// título (con [icono] opcional), demo y exactamente 3 pasos cortos.
+class WalkthroughTipo {
+  const WalkthroughTipo({required this.titulo, this.icono, required this.pasos, required this.demo});
+
+  final String titulo;
+  final IconData? icono;
+  final List<String> pasos;
   final Widget demo;
 }
 
@@ -91,7 +112,8 @@ class _WalkthroughScreen extends StatefulWidget {
 class _WalkthroughScreenState extends State<_WalkthroughScreen> {
   final _controller = PageController();
   int _pagina = 0;
-  static const _total = 3;
+
+  int get _total => widget.modulo._comoFunciona.length + 2;
 
   @override
   void dispose() {
@@ -142,8 +164,9 @@ class _WalkthroughScreenState extends State<_WalkthroughScreen> {
                   onPageChanged: (p) => setState(() => _pagina = p),
                   children: [
                     _PantallaProposito(modulo: m, activa: _pagina == 0),
-                    _PantallaComoFunciona(modulo: m, activa: _pagina == 1),
-                    _PantallaConsejo(modulo: m, activa: _pagina == 2),
+                    for (final (i, tipo) in m._comoFunciona.indexed)
+                      _PantallaComoFunciona(modulo: m, tipo: tipo, activa: _pagina == 1 + i),
+                    _PantallaConsejo(modulo: m, activa: _pagina == _total - 1),
                   ],
                 ),
               ),
@@ -392,9 +415,10 @@ class _Onda extends StatelessWidget {
 // ---------------------------------------------------------------------------
 
 class _PantallaComoFunciona extends StatefulWidget {
-  const _PantallaComoFunciona({required this.modulo, required this.activa});
+  const _PantallaComoFunciona({required this.modulo, required this.tipo, required this.activa});
 
   final WalkthroughModulo modulo;
+  final WalkthroughTipo tipo;
   final bool activa;
 
   @override
@@ -408,23 +432,49 @@ class _PantallaComoFuncionaState extends _PantallaState<_PantallaComoFunciona> {
   @override
   Widget build(BuildContext context) {
     final m = widget.modulo;
+    final tipo = widget.tipo;
+    final titulo = Text(
+      tipo.titulo,
+      style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: AppColors.ink),
+    );
 
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 28),
       children: [
         const SizedBox(height: 8),
+        if (tipo.icono != null) ...[
+          _Cascada(
+            entrada: entrada,
+            orden: 0,
+            child: Text(
+              'CÓMO FUNCIONA',
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: m.oscuro, letterSpacing: 1.4),
+            ),
+          ),
+          const SizedBox(height: 6),
+        ],
         _Cascada(
           entrada: entrada,
           orden: 0,
-          child: const Text(
-            'Cómo funciona',
-            style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: AppColors.ink),
-          ),
+          child: tipo.icono == null
+              ? titulo
+              : Row(
+                  children: [
+                    Container(
+                      width: 38,
+                      height: 38,
+                      decoration: BoxDecoration(color: m.fuerte, borderRadius: BorderRadius.circular(12)),
+                      child: Icon(tipo.icono, size: 21, color: Colors.white),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(child: titulo),
+                  ],
+                ),
         ),
         const SizedBox(height: 18),
-        _Cascada(entrada: entrada, orden: 1, child: Center(child: m.demo)),
+        _Cascada(entrada: entrada, orden: 1, child: Center(child: tipo.demo)),
         const SizedBox(height: 22),
-        for (var i = 0; i < m.pasos.length; i++)
+        for (var i = 0; i < tipo.pasos.length; i++)
           Padding(
             padding: const EdgeInsets.only(bottom: 14),
             child: _Cascada(
@@ -447,7 +497,7 @@ class _PantallaComoFuncionaState extends _PantallaState<_PantallaComoFunciona> {
                   Expanded(
                     child: Padding(
                       padding: const EdgeInsets.only(top: 4),
-                      child: Text(m.pasos[i], style: const TextStyle(fontSize: 15, height: 1.35, color: AppColors.sub)),
+                      child: Text(tipo.pasos[i], style: const TextStyle(fontSize: 15, height: 1.35, color: AppColors.sub)),
                     ),
                   ),
                 ],
@@ -571,24 +621,26 @@ class _PantallaConsejoState extends _PantallaState<_PantallaConsejo> {
 // ---------------------------------------------------------------------------
 
 /// "Pantallita" de 270×210 (fondo, borde y sombra) que corre [builder] con
-/// un `t` de 0 a 1 cada 4,2 s; `vuelta` sube en cada repetición para que la
+/// un `t` de 0 a 1 cada [duracion] (4,2 s por defecto; más larga si la demo
+/// muestra muchas cosas y hace falta tiempo para seguirla); `vuelta` sube en cada repetición para que la
 /// demo use otro ejemplo. En 0,92–1 todo se desvanece antes de empezar de
 /// nuevo. Los textos no escalan con el tamaño de letra del sistema (es un
 /// dibujo a escala).
 class WalkthroughDemo extends StatefulWidget {
-  const WalkthroughDemo({super.key, required this.builder});
+  const WalkthroughDemo({super.key, required this.builder, this.duracion = const Duration(milliseconds: 4200)});
 
   static const ancho = 270.0;
   static const alto = 210.0;
 
   final Widget Function(BuildContext context, double t, int vuelta) builder;
+  final Duration duracion;
 
   @override
   State<WalkthroughDemo> createState() => _WalkthroughDemoState();
 }
 
 class _WalkthroughDemoState extends State<WalkthroughDemo> with SingleTickerProviderStateMixin {
-  late final AnimationController _anim = AnimationController(vsync: this, duration: const Duration(milliseconds: 4200))
+  late final AnimationController _anim = AnimationController(vsync: this, duration: widget.duracion)
     ..addStatusListener((s) {
       if (s == AnimationStatus.completed) {
         setState(() => _vuelta++);
