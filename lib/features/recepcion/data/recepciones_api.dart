@@ -11,6 +11,9 @@ class RecepcionesApi {
 
   final Dio _dio;
 
+  /// Lista recepciones de **ambos orígenes** (MANUAL y OC) — antes se
+  /// filtraba solo MANUAL y el Historial / Pendientes de control quedaban
+  /// casi vacíos, porque casi todo entra desde una OC.
   Future<List<Recepcion>> listar({
     String? q,
     String? estado,
@@ -21,7 +24,6 @@ class RecepcionesApi {
     final res = await _dio.get<Map<String, dynamic>>(
       '/recepciones',
       queryParameters: {
-        'origen_recepcion': 'MANUAL',
         if (q != null && q.isNotEmpty) 'q': q,
         'estado': ?estado,
         'id_usuario_receptor': ?idUsuarioReceptor,
